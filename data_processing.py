@@ -389,3 +389,159 @@ def path_likelyhood(paths_frB_toC):
         columns=["DepPort", "ArrPort", "Percentage"]
     ).sort_values(by="Percentage", ascending=False)
     return a_path_likelyhood
+def freq_of_port_seq(route_RU_int_NL_matched_imoNr):
+    port_sequence = {}
+    for df in route_RU_int_NL_matched_imoNr:
+    
+        port_list = df['DepPort'].tolist()
+        port_list.append(df.iloc[-1]['ArrPort'])
+        port_list = tuple(port_list)
+        if port_list not in list(port_sequence.keys()):
+            port_sequence[port_list] =  1
+        else:
+            port_sequence[port_list] = port_sequence.get(port_list) + 1
+    return port_sequence
+def route_seq_matched_nrimo(route_RU_int_NL_filtered_v2, nr_imo):
+    route_RU_int_NL_matched_imoNr = []
+    for df in route_RU_int_NL_filtered_v2:
+        info_shared_port = df
+        if len(info_shared_port['IMO'].unique()) == nr_imo: # fill in TOTAL NR. OF PORT ALLOWED
+            route_RU_int_NL_matched_imoNr.append(info_shared_port)
+    if len(route_RU_int_NL_matched_imoNr) == 0:
+        print('No matched results')
+    return route_RU_int_NL_matched_imoNr
+
+def extract_route_RU_to_NL_and_others(track_route_fr_RU_to_NL,
+                                      bwtcentr_w_NLport,
+                                      bwtcentr_ports):
+    # extract port NL
+    route_RU_int_NL = []
+    route_RU_int_other = []
+    # extract route from RU-aport-NL
+    # check hotpot
+    for df in track_route_fr_RU_to_NL:
+    
+        info_shared_port = df.iloc[-1]
+        if (info_shared_port['ArrPort'] in (bwtcentr_w_NLport)):
+            if np.isin(df['DepPort'].unique(), (bwtcentr_ports)).any():
+                
+                route_RU_int_NL.append(df)
+                
+        else:
+            route_RU_int_other.append(df)
+    return route_RU_int_NL, route_RU_int_other
+
+def find_matched_imo_at_1stshared_port(nbs_edges_RU, port_of_russia,
+                                       eu_ports, alltankers_adjusted,
+                                       scnd_in_day, low_t_time, up_t_time):
+    track_route_fr_RU_to_2ndPort_and_connected_IMO = []
+    for edge in nbs_edges_RU:
+    
+        # extract route from a RU port to its neighbout
+        start_at_RU_port = edge[0]
+        if ((edge[1] in (eu_ports)) or (edge[1] in port_of_russia)):
+            next
+        
+        else: # forloop check the first stop in EU or RU
+    
+           
+            route_from_RUport_to_its_nb = alltankers_adjusted[alltankers_adjusted['DepPort'].isin([start_at_RU_port]) &
+                                                          alltankers_adjusted['ArrPort'].isin([edge[1]])]
+            arr_port = list(route_from_RUport_to_its_nb['ArrPort'])
+            # extract all IMO available at the arrival port of the first trip from RU
+            diff_IMO_at_2ndPort = alltankers_adjusted[alltankers_adjusted['DepPort'].isin(
+                arr_port)]
+            
+            
+            if len(diff_IMO_at_2ndPort)>=1:       
+                    
+                for row in range(len(route_from_RUport_to_its_nb)):
+                    
+                    # arrive time of IMO travel from RU to its nb
+                    arr_time_of_IMO_fr_RU_to_2ndPort = route_from_RUport_to_its_nb.iloc[row,
+                                                          route_from_RUport_to_its_nb.columns.get_loc('ArrDate')]
+                    IMO_fr_RU_to_2ndPort = route_from_RUport_to_its_nb.iloc[row:row+1]
+                    test_test_ = pd.DataFrame(columns = IMO_fr_RU_to_2ndPort.columns)
+                    # loop through all IMO availabel in a nb
+                    for row_dep_port in range(len(diff_IMO_at_2ndPort)):
+                        # departure time of an IMO
+                        dep_time_of_IMO_avai_at_2ndPort = diff_IMO_at_2ndPort.iloc[row_dep_port,
+                                                          diff_IMO_at_2ndPort.columns.get_loc('DepDate')]
+                        dep_port_per_row = diff_IMO_at_2ndPort.iloc[row_dep_port,
+                                                          diff_IMO_at_2ndPort.columns.get_loc('DepPort')]
+                        IMO_avai_at_2ndPort = diff_IMO_at_2ndPort.iloc[row_dep_port:
+                                                          row_dep_port+1]
+                
+                        # time different between IMO from RU and IMO availabe at its nb
+                        time_gap = dep_time_of_IMO_avai_at_2ndPort - arr_time_of_IMO_fr_RU_to_2ndPort
+                        time_gap_hr = (time_gap.days*scnd_in_day + time_gap.seconds)/(60*60)
+                        # base on threshold assump to take for oil transshipment. if met 
+                        # the threshold condition, save attributes of that IMO. Otherwise move to the next IMO of IMO available list
+                        if (np.sign(time_gap_hr) == 1) & ((abs(time_gap_hr)>= low_t_time) & (abs(time_gap_hr) < up_t_time)):
+                            #print(f'time gap after the condition {time_gap_hr}')
+                
+                
+                            test_test_ = pd.concat([IMO_fr_RU_to_2ndPort, IMO_avai_at_2ndPort])
+                            if len(test_test_) != 0:
+                                
+                                track_route_fr_RU_to_2ndPort_and_connected_IMO.append(test_test_)
+                            
+                        else:
+                            next
+    
+    
+            else: # for matched IMO at shared ports
+                next
+    
+    return track_route_fr_RU_to_2ndPort_and_connected_IMO
+def find_matched_imo_at_shared_port(route_RU_to_NL,alltankers_adjusted, 
+                                   df,
+                                  scnd_in_day,
+                                  low_t_time,
+                                  up_t_time
+                                  ):
+    track_route_fr_RU_to_NL = []
+    for df in route_RU_to_NL:
+
+        arr_port = [df['ArrPort'].iloc[-1]]
+        # extract all IMO available at the arrival port of the first trip from RU
+        diff_IMO_at_sharedPort = alltankers_adjusted[alltankers_adjusted['DepPort'].isin(
+            arr_port)]
+        
+        
+        if len(diff_IMO_at_sharedPort)>=1:       
+                
+
+                
+                # arrive time of IMO travel from RU to its nb
+                arr_time_of_IMO_fr_RU_to_2ndPort = df.iloc[-1,
+                                                      df.columns.get_loc('ArrDate')]
+
+                test_test_ = pd.DataFrame(columns = df.columns)
+                # loop through all IMO availabel in a nb
+                for row_dep_port in range(len(diff_IMO_at_sharedPort)):
+                    # departure time of an IMO
+                    dep_time_of_IMO_avai_at_sharedPort = diff_IMO_at_sharedPort.iloc[row_dep_port,
+                                                      diff_IMO_at_sharedPort.columns.get_loc('DepDate')]
+                    dep_port_per_row = diff_IMO_at_sharedPort.iloc[row_dep_port,
+                                                      diff_IMO_at_sharedPort.columns.get_loc('DepPort')]
+                    IMO_avai_at_2ndPort = diff_IMO_at_sharedPort.iloc[row_dep_port:
+                                                      row_dep_port+1]
+            
+                    # time different between IMO from RU and IMO availabe at its nb
+                    time_gap = dep_time_of_IMO_avai_at_sharedPort - arr_time_of_IMO_fr_RU_to_2ndPort
+                    time_gap_hr = (time_gap.days*scnd_in_day + time_gap.seconds)/(60*60)
+                    # base on threshold assump to take for oil transshipment. if met 
+                    # the threshold condition, save attributes of that IMO. Otherwise move to the next IMO of IMO available list
+                    if (np.sign(time_gap_hr) == 1) & ((abs(time_gap_hr)>= low_t_time) & (abs(time_gap_hr) < up_t_time)):
+                        #print(f'time gap after the condition {time_gap_hr}')
+            
+                        
+                        df_merg = pd.concat([df, IMO_avai_at_2ndPort])
+                        if len(df_merg) > len(df):
+                            
+                            track_route_fr_RU_to_NL.append(df_merg)
+                        
+                    else:
+                        next
+    return track_route_fr_RU_to_NL

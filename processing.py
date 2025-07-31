@@ -148,6 +148,14 @@ ports_of_interest = [
     # South Africa
     "Richards Bay", "Cape Town", "Durban", "Saldanha Bay"
 ]
+country_of_interest = ['China', 'India', 'Turkey', 'United Arab Emirates', 'Singapore',
+                       'Saudi Arabia', 'Korea (South)', 'Brazil', 'Kazakhstan', 'Russia']
+ports_by_country = {}
+for ctry in country_of_interest:
+    ctry_ports = alltankers_adjusted[
+        alltankers_adjusted['Country'] == ctry]['DepPort'].unique()
+    ports_by_country[ctry] = list(ctry_ports)
+
 # Select RU port
 
 ru_country = ['Russia']
@@ -162,7 +170,7 @@ port_of_russia = list(set(port_of_russia))
 len(port_of_russia)
 # Select EU countries
 eu_countries = [
-    "Netherlands", "Sweden",  "Belgium", "Greece", "Italy", "France", "Spain",
+    "Netherlands","Sweden",  "Belgium", "Greece", "Italy", "France", "Spain",
     "Germany", "Finland", "Poland", "Denmark", "Portugal", "Romania", "Lithuania",
     "Ireland", "Malta", "Cyprus", "Bulgaria", "Croatia", "Slovenia", "Estonia",
     "Latvia"]
@@ -187,7 +195,7 @@ for nr in range(len(alltankers_adjusted)):
         NL_ports.append(NLport)
     else:
         next
-
+        
 NL_ports = list(set(NL_ports))
 # %% Creating network and find neighbours and connected IMO
 # create network
@@ -195,22 +203,36 @@ start_time = time.time()
 
 network_edges = []
 for n in range(len(alltankers_adjusted)):
-    info = tuple([alltankers_adjusted['DepPort'].iloc[n],
+    info = tuple([alltankers_adjusted['DepPort'].iloc[n], 
                   alltankers_adjusted['ArrPort'].iloc[n],
-                  {'DepDate': str(alltankers_adjusted['DepDate'].iloc[n]),
-                   'ArrDate': str(alltankers_adjusted['ArrDate'].iloc[n]),
-                   'TravelTime': str(alltankers_adjusted['TravelTime'].iloc[n]),
+                  {'DepDate' : str(alltankers_adjusted['DepDate'].iloc[n]),
+                   'ArrDate' : str(alltankers_adjusted['ArrDate'].iloc[n]),
+                   'TravelTime' : str(alltankers_adjusted['TravelTime'].iloc[n]),
                    'IMO': alltankers_adjusted['IMO'].iloc[n]}])
     network_edges.append(info)
 # create graph
-# multi-direct-graph
+## multi-direct-graph
 Graph_whole_dataset = nx.MultiDiGraph()
 Graph_whole_dataset.add_edges_from(network_edges)
-# direct-graph
+# betweeness centrality
+btwcentr = nx.betweenness_centrality(Graph_whole_dataset)
+## direct-graph
 direct_graph = nx.DiGraph()
 direct_graph.add_edges_from(network_edges)
 # Create all combination of RU and NL ports
 comb_ru_nl_ports = list(itertools.product(port_of_russia, NL_ports))
+# extract betweeness centrality of ports for each country
+port_w_high_bwtcentr = []
+for ctr_of_int in country_of_interest:
+    filter_value = {port: btwcentr[port] for port in ports_by_country[ctr_of_int]}
+    # Get top 2 keys with highest values
+    top_2_keys = sorted(filter_value, key=filter_value.get, reverse=True)[:2]
+    port_w_high_bwtcentr.append(top_2_keys)
+port_w_high_bwtcentr = [port for sublist in port_w_high_bwtcentr for port in sublist]
+
+RUport_w_high_bwtcentr = ['Novorossiysk','Ust Luga']
+port_w_high_bwtcentr.remove('Novorossiysk')
+port_w_high_bwtcentr.remove('Ust Luga')
 
 
 # define selfloop edge and remove it
@@ -227,8 +249,8 @@ IMO_in_EU = alltankers_adjusted[alltankers_adjusted['Country'].isin(
 IMO_in_NL = alltankers_adjusted[alltankers_adjusted['Country'].isin(NL)]
 
 # threshold time gap in hours
-up_t_time = float('inf')
-low_t_time = 0
+up_t_time = 120 #float('inf')
+low_t_time = 60
 scnd_in_day = 1*24*60*60
 # extract 1 hop
 # aim of this task is to find a connection trip at the nb port of the first trip
@@ -238,7 +260,7 @@ scnd_in_day = 1*24*60*60
 # out_edge_node_neighbour = []
 # extract only neighbours that belongs to the routes going from Novorossiysk
 # set iteration time
-m = 1
+m = 4
 n = 0
 edges_Nov = list(set(list(Graph_whole_dataset.out_edges('Novorossiysk',))))
 start_IMO = {}  # start from a specific RU port. Expect a dict of dict. with the
@@ -502,10 +524,17 @@ del combined_routes_
 # %% Phase 3: Analyse
 # load data
 with open('./processing/pr_inter_input/onetransit_routes.pkl', 'rb') as inp:
-    combined_routes = pickle.load(inp)
+    combined_routes_notall = pickle.load(inp)
+
+remove_shiptype = ['Asphalt/Bitumen Tanker', 'Oil Bunkering Tanker', 'Shuttle Tanker']
 # remove routes that are the same
-onetransit_route_frRU_toNL = [combined_routes[x] for x, _ in enumerate(combined_routes)
-                              if combined_routes[x].equals(combined_routes[x-1]) is False]
+onetransit_route_frRU_toNL = [combined_routes_notall[x] for x, _ in enumerate(combined_routes_notall)
+                              if combined_routes_notall[x].equals(combined_routes_notall[x-1]) is False]
+## remove df not contain hotspot port
+onetransit_fshiptype_fhotpot = [ onetransit_route_frRU_toNL[x] for x, _ in enumerate(onetransit_route_frRU_toNL)
+    if (onetransit_route_frRU_toNL[x]['DepPort'].isin(port_w_high_bwtcentr)).any()
+        and (~onetransit_route_frRU_toNL[x]['ShipType'].isin(remove_shiptype)).all()]
+            
 onetrans_dir_RU_NL = [
     df for df in onetransit_route_frRU_toNL if df.shape[0] < 3]
 

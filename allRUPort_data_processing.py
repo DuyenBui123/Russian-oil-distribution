@@ -211,8 +211,17 @@ direct_graph.add_edges_from(network_edges)
 # Create all combination of RU and NL ports
 comb_ru_nl_ports = list(itertools.product(port_of_russia, NL_ports))
 # extract betweeness centrality of ports for each country
-filter_value = {port: btwcentr[port] for port in ports_by_country['Korea (South)']}
+port_w_high_bwtcentr = []
+for ctr_of_int in country_of_interest:
+    filter_value = {port: btwcentr[port] for port in ports_by_country[ctr_of_int]}
+    # Get top 2 keys with highest values
+    top_2_keys = sorted(filter_value, key=filter_value.get, reverse=True)[:2]
+    port_w_high_bwtcentr.append(top_2_keys)
+port_w_high_bwtcentr = [port for sublist in port_w_high_bwtcentr for port in sublist]
 
+RUport_w_high_bwtcentr = ['Novorossiysk','Ust Luga']
+port_w_high_bwtcentr.remove('Novorossiysk')
+port_w_high_bwtcentr.remove('Ust Luga')
 # define selfloop edge and remove it
  # define and remove nodes with only selfloop
 Graph_whole_dataset.remove_edges_from(list(nx.selfloop_edges(Graph_whole_dataset)))
@@ -240,7 +249,8 @@ m = 1
 n = 0
 
 # extract route start from all RU ports
-path_frRUPort_to_nbs = alltankers_adjusted[alltankers_adjusted['Country'].isin(['Russia'])]
+################## path_frRUPort_to_nbs = alltankers_adjusted[alltankers_adjusted['Country'].isin(['Russia'])]
+path_frRUPort_to_nbs = alltankers_adjusted[alltankers_adjusted['DepPort'].isin(['Novorossiysk'])]
 mask_notinEUandRUPorts = (
     (~path_frRUPort_to_nbs['Arr_Country'].isin(eu_countries)) &
     (~path_frRUPort_to_nbs['Arr_Country'].isin(['Russia']))
@@ -257,7 +267,8 @@ tophotspot = ['India', 'Turkey', 'Kazakhstan', 'Brazil', 'Egypt', 'China',
               'Singapore', 'United Arab Emirates', 'Saudi Arabia', 'Korea (South)',
               'Malaysia', 'Azerbaijan']
 #* select only arrival ports from RU that in the hotspot list
-mask_tophotspots = path_frRUPort_to_nonEUenRUnbs['Arr_Country'].isin(tophotspot)
+################### mask_tophotspots = path_frRUPort_to_nonEUenRUnbs['Arr_Country'].isin(tophotspot)
+mask_tophotspots = path_frRUPort_to_nonEUenRUnbs['ArrPort'].isin(port_w_high_bwtcentr)
 path_frRUPort_to_tophotspot = path_frRUPort_to_nonEUenRUnbs[mask_tophotspots]
 
 # count and plots countries and ports exporting to the Netherlands
@@ -268,7 +279,8 @@ count_port_path_frRUPort_to_hotspotport = collections.Counter(path_frRUPort_to_t
 mask_NLport= paths_fr2ndPort_to_nextPort['ArrPort'].isin(NL_ports)
 paths_fr2ndPort_to_NL = paths_fr2ndPort_to_nextPort[mask_NLport]
 #* extract route from 2nd hotspot direct to NL
-mask_hotspot_to_NL = paths_fr2ndPort_to_NL['Country'].isin(tophotspot)
+############# mask_hotspot_to_NL = paths_fr2ndPort_to_NL['Country'].isin(tophotspot)
+mask_hotspot_to_NL = paths_fr2ndPort_to_NL['DepPort'].isin(port_w_high_bwtcentr)
 paths_fr2ndhotspotPort_to_NL = paths_fr2ndPort_to_NL[mask_hotspot_to_NL]
 # count and plots countries and ports exporting to the Netherlands
 count_ctry_path_2ndPort_t0_NL = collections.Counter(paths_fr2ndhotspotPort_to_NL['Country'])
@@ -294,25 +306,6 @@ paths_frA_toB = path_frRUPort_to_tophotspot
 RU_hotpotpath_likelyhood = pr.path_likelyhood(paths_frA_toB)
 
 
-frB_toC_portpairs = zip(paths_frB_toC['DepPort'],
-                        paths_frB_toC['ArrPort'])
-frB_toC_portpairs_count = collections.Counter(list(frB_toC_portpairs))
-
-    # Total number of such pairs
-total_pairs = sum(frB_toC_portpairs_count.values())
-
-# Calculate percentage for each pair
-percentage_dict = {
-    pair: (count / total_pairs)
-    for pair, count in frB_toC_portpairs_count.items()
-}
-sum(percentage_dict.values())
-# Convert to DataFrame for better viewing or plotting
-a_path_likelyhood = pd.DataFrame(
-    [(dep, arr, pct) for (dep, arr), pct in percentage_dict.items()],
-    columns=["DepPort", "ArrPort", "Percentage"]
-).sort_values(by="Percentage", ascending=False)
-
     # Normalize percentages to probabilities
 RU_hotpotpath_likelyhood["Probability"] = RU_hotpotpath_likelyhood["Percentage"]
 NL_path_likelyhood["Probability"] = NL_path_likelyhood["Percentage"]
@@ -330,7 +323,7 @@ for i, row1 in RU_hotpotpath_likelyhood.iterrows():
 # Display as DataFrame
 combined_df = pd.DataFrame(combined_routes, columns=["Route", "Combined_Percentage"])
 full_routes_fr_RU_to_NL.append(combined_df)
-
+combined_df_onestop = combined_df
 
 sum(RU_hotpotpath_likelyhood["Probability"])
 
@@ -465,14 +458,14 @@ for row in range(len(next_paths_dir_to_NL_unique)):
 
     else:
         nonEUpath_to_NL.append(path.to_frame().T)
-EUpath_to_NL = pd.concat(EUpath_to_NL,ignore_index=True)
-nonEUpath_to_NL = pd.concat(nonEUpath_to_NL,ignore_index=True)
+# EUpath_to_NL = pd.concat(EUpath_to_NL,ignore_index=True)
+# nonEUpath_to_NL = pd.concat(nonEUpath_to_NL,ignore_index=True)
 count_country_EUpath_to_NL = collections.Counter(EUpath_to_NL['Country'])
 count_country_nonEUpath_to_NL = collections.Counter(nonEUpath_to_NL['Country'])
 # remove df with shiptypes as follow
 remove_shiptype = ['Asphalt/Bitumen Tanker', 'Oil Bunkering Tanker', 'Shuttle Tanker']
 EUpath_to_NL_filtered = [df for df in EUpath_to_NL if df['ShipType'].unique() not in remove_shiptype]
-
+#EUpath_to_NL_filtered = EUpath_to_NL[~EUpath_to_NL['ShipType'].isin(remove_shiptype)]
 # trace back to calculate probabilty
 path_frRUPort_to_tophotspot
 
@@ -509,7 +502,7 @@ for i, row1 in RU_hotpotpath_likelyhood.iterrows():
                 combined_routes.append((full_route, prob * 100))  # back to percentage
     
 #* Display as DataFrame
-combined_df = pd.DataFrame(combined_routes, columns=["Route", "Combined_Percentage"])
+combined_eudf = pd.DataFrame(combined_routes, columns=["Route", "Combined_Percentage"])
 full_routes_fr_RU_to_NL.append(combined_df)
 combined_2stop_routes = combined_df
 #* for non EU path
@@ -542,8 +535,8 @@ full_routes_fr_RU_to_NL.append(combined_df)
 
 sum(nonEUpath_to_NL_likelyhood['Probability'])
 sum(combined_2stop_routes['Combined_Percentage'])
-a = next_paths_dir_to_NL_unique[next_paths_dir_to_NL_unique['IMO'] == 9292046]
-a = alltankers_adjusted[alltankers_adjusted['IMO'] == 9370848]
+a = next_paths_dir_to_NL_unique[next_paths_dir_to_NL_unique['IMO'] == 9842188]
+a = alltankers_adjusted[alltankers_adjusted['IMO'] == 9374868]
 
 aaa = []
 aaa =+ 2

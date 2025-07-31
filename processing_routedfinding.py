@@ -15,13 +15,12 @@ import time
 import itertools
 from datetime import datetime, timedelta
 import networkx as nx
-import csv
-import re
 from Code import data_processing as pr
 from Code import data_preprocessing as pp
 import numpy as np
 import pandas as pd
 import os
+import multiprocessing
 os.chdir("D:/Dropbox/Duyen/University/Master/Year 2/Internship")
 if not sys.warnoptions:
     import warnings
@@ -116,7 +115,10 @@ for imo in alltankers_adjusted['IMO'].unique():
 alltankers_adjusted = alltankers_adjusted[
     alltankers_adjusted['IMO'].isin(interl_imo)]    
 
+# combine time for the same ports
 
+mask_dub = alltankers_adjusted['DepPort'] != alltankers_adjusted['ArrPort']
+alltankers_adjusted =   alltankers_adjusted[mask_dub]     
 # %% Port selections for different regions
 
 country_of_interest = ['China', 'India', 'Turkey', 'United Arab Emirates', 'Singapore',
@@ -211,12 +213,19 @@ bwtcentr_ports.remove('Rotterdam')
 # extract route for one stop
 # start port in RU
 # threshold time gap in hours
-up_t_time = float('inf')
+start_time = time.time()
+up_t_time = 24*7#float('inf')
 low_t_time = 0
 scnd_in_day = 1*24*60*60
+# Round 1
+# iteration value
+n = 0
+m = 8
+# start iterating
 start_RU_port = ['Novorossiysk']
 nbs_edges_RU_cmb = []
 nbs_edges_RU = []
+filtered_final_route_RU_to_NL = []
 if len(start_RU_port) == 1:
     nbs_edges_RU = list(set(list(Graph_whole_dataset.out_edges(start_RU_port,))))
     
@@ -232,74 +241,43 @@ if len(nbs_edges_RU_cmb) > 1:
             nbs_edges_RU.append(sublst)
 
 # loop through all neighbours of Novorossiysk
-track_route_fr_RU_to_2ndPort_and_connected_IMO = []
-for edge in nbs_edges_RU:
-
-    # extract route from a RU port to its neighbout
-    start_at_RU_port = edge[0]
-    if ((edge[1] in (eu_ports)) or (edge[1] in port_of_russia)):
-        next
+if __name__ == '__main__':
+    pool = multiprocessing.Pool()
+    pool = multiprocessing.Pool(processes=4)
+    inputs = [0,1,2,3,4]
+    outputs = pool.map(square, inputs)
     
-    else: # forloop check the first stop in EU or RU
-        if edge[1] not in bwtcentr_ports:
-            next
-        else: # forloop check the first stop in hotspot with high betweenness centrality
-            route_from_RUport_to_its_nb = alltankers_adjusted[alltankers_adjusted['DepPort'].isin([start_at_RU_port]) &
-                                                          alltankers_adjusted['ArrPort'].isin([edge[1]])]
-            arr_port = list(route_from_RUport_to_its_nb['ArrPort'])
-            # extract all IMO available at the arrival port of the first trip from RU
-            diff_IMO_at_2ndPort = alltankers_adjusted[alltankers_adjusted['DepPort'].isin(
-                arr_port)]
-            
-            matched_imo_at_shared_port = pd.DataFrame(
-                columns = diff_IMO_at_2ndPort.columns)
     
-            for row_shared_port in range(len(diff_IMO_at_2ndPort)):
-                info_shared_port = diff_IMO_at_2ndPort.iloc[[row_shared_port]]
-                if (info_shared_port['ArrPort'].isin(bwtcentr_w_NLport)).any():
-                    matched_imo_at_shared_port = pd.concat([matched_imo_at_shared_port,
-                                                           info_shared_port])
-            if len(matched_imo_at_shared_port)>1:       
-                    
-                for row in range(len(route_from_RUport_to_its_nb)):
-                    
-                    # arrive time of IMO travel from RU to its nb
-                    arr_time_of_IMO_fr_RU_to_2ndPort = route_from_RUport_to_its_nb.iloc[row,
-                                                          route_from_RUport_to_its_nb.columns.get_loc('ArrDate')]
-                    IMO_fr_RU_to_2ndPort = route_from_RUport_to_its_nb.iloc[row:row+1]
-                    test_test_ = pd.DataFrame(columns = IMO_fr_RU_to_2ndPort.columns)
-                    # loop through all IMO availabel in a nb
-                    for row_dep_port in range(len(matched_imo_at_shared_port)):
-                        # departure time of an IMO
-                        dep_time_of_IMO_avai_at_2ndPort = matched_imo_at_shared_port.iloc[row_dep_port,
-                                                          matched_imo_at_shared_port.columns.get_loc('DepDate')]
-                        dep_port_per_row = matched_imo_at_shared_port.iloc[row_dep_port,
-                                                          matched_imo_at_shared_port.columns.get_loc('DepPort')]
-                        IMO_avai_at_2ndPort = matched_imo_at_shared_port.iloc[row_dep_port:
-                                                          row_dep_port+1]
-                
-                        # time different between IMO from RU and IMO availabe at its nb
-                        time_gap = dep_time_of_IMO_avai_at_2ndPort - arr_time_of_IMO_fr_RU_to_2ndPort
-                        time_gap_hr = (time_gap.days*scnd_in_day + time_gap.seconds)/(60*60)
-                        # base on threshold assump to take for oil transshipment. if met 
-                        # the threshold condition, save attributes of that IMO. Otherwise move to the next IMO of IMO available list
-                        if (np.sign(time_gap_hr) == 1) & ((abs(time_gap_hr)>= low_t_time) & (abs(time_gap_hr) < up_t_time)):
-                            #print(f'time gap after the condition {time_gap_hr}')
-                
-                
-                            test_test_ = pd.concat([IMO_fr_RU_to_2ndPort, IMO_avai_at_2ndPort])
-                            if len(test_test_) != 0:
-                                
-                                track_route_fr_RU_to_2ndPort_and_connected_IMO.append(test_test_)
-                            
-                        else:
-                            next
-
-
-            else: # for matched IMO at shared ports
-                next
-port_sequence = {}
+    
+track_route_fr_RU_to_2ndPort_and_connected_IMO = pr.find_matched_imo_at_1stshared_port(
+    nbs_edges_RU, port_of_russia,
+    eu_ports, alltankers_adjusted, 
+    scnd_in_day, low_t_time, up_t_time)
+# extract route from RU-hotpot-NL and number of IMO difference            
+route_RU_1int_NL = []
+route_RU_1int_other = []
+# extract route from RU-aport-NL
 for df in track_route_fr_RU_to_2ndPort_and_connected_IMO:
+    info_shared_port = df
+    if (info_shared_port['ArrPort'].isin(bwtcentr_w_NLport)).any():
+        if (info_shared_port['DepPort'].isin(bwtcentr_ports)).any():
+            
+            route_RU_1int_NL.append(info_shared_port)
+            
+    else:
+        route_RU_1int_other.append(info_shared_port)
+#* save final route from RU to NL
+filtered_final_route_RU_to_NL.append(route_RU_1int_NL)      
+# select for the total number of IMO
+route_RU_1int_NL_matched_imoNr = []
+for df in route_RU_1int_NL:
+    info_shared_port = df
+    if len(info_shared_port['IMO'].unique()) == 2: # fill in TOTAL NR. OF PORT ALLOWED
+        route_RU_1int_NL_matched_imoNr.append(info_shared_port)
+        
+# calculate unique route frequency
+port_sequence = {}
+for df in route_RU_1int_NL_matched_imoNr:
 
     port_list = df['DepPort'].tolist()
     port_list.append(df.iloc[-1]['ArrPort'])
@@ -309,8 +287,84 @@ for df in track_route_fr_RU_to_2ndPort_and_connected_IMO:
     else:
         port_sequence[port_list] = port_sequence.get(port_list) + 1
 
+# iteration calculation
+n = n+1
+# Round 2:
+# get nbs of the next port
+route_RU_to_NL = route_RU_1int_other
+while n < m:
 
+    
+    track_route_fr_RU_to_NL = pr.find_matched_imo_at_shared_port(route_RU_to_NL,alltankers_adjusted, 
+                                       df,
+                                      scnd_in_day,
+                                      low_t_time,
+                                      up_t_time)
+        
+        
+    route_RU_int_NL, route_RU_int_other = pr.extract_route_RU_to_NL_and_others(
+        track_route_fr_RU_to_NL,
+        bwtcentr_w_NLport,
+        bwtcentr_ports)
+    route_RU_int_NL_filtered_v1 = []
+    for df in route_RU_int_NL:
+        lst_locations = df.iloc[-1]
+        if lst_locations['DepPort'] not in port_of_russia:
+            route_RU_int_NL_filtered_v1.append(df)
+    
+    
+    # next port(eu) to NL
+    route_RU_int_NL_filtered_v2 = []
+    
+    for df in route_RU_int_NL_filtered_v1:
+    
+        if df['DepPort'].isin(eu_ports).any():
+            depPort = np.array(df['DepPort'])
+            mask_euport = np.isin(depPort, eu_ports)
+            ind = np.where(mask_euport)[0].tolist()
+            if len(ind) == 1:
+                if df['IMO'].iloc[ind[0]] == df['IMO'].iloc[(ind[0]-1)]:
+                    route_RU_int_NL_filtered_v2.append(df)
+                else:
+                    next
+            else:
+                boo_check = []
+                for indx in ind:
+                    if df['IMO'].iloc[indx] == df['IMO'].iloc[(indx -1)]:
+                        if indx < len(df)-1:
+                            if df['IMO'].iloc[indx] == df['IMO'].iloc[(indx + 1)]:
+                                boo_check.append(True)
+                            else:
+                                boo_check.append(False)
+                                
+                        else:
+                            boo_check.append(True)
+                    else:
+                        boo_check.append(False)
+            if len(boo_check) > 0 and all(boo_check):
+                route_RU_int_NL_filtered_v2.append(df)
+                        
+        else: 
+            route_RU_int_NL_filtered_v2.append(df)
+     #* save final routes from RU to NL
+    filtered_final_route_RU_to_NL.append(route_RU_int_NL_filtered_v2)    
 
+            
+    # update list of routes for the next round iteration
+    route_RU_to_NL = route_RU_int_other
+    n = n+1
+final_route_RU_to_NL = []
+for lst in filtered_final_route_RU_to_NL:
+    for sublst in lst:
+
+            final_route_RU_to_NL.append(sublst)
+print("--- %s seconds ---" % (time.time() - start_time))
+# select for the total number of IMO
+route_RU_int_NL_matched_imoNr = pr.route_seq_matched_nrimo(
+    route_RU_int_NL_filtered_v2, 5)
+    
+# calculate unique route frequency
+port_sequence = pr.freq_of_port_seq(route_RU_int_NL_matched_imoNr)
 # neighbour of RU
 # do not take the neighbour with RU and EU port
 # check the available IMO at the arrival port
@@ -319,3 +373,4 @@ for df in track_route_fr_RU_to_2ndPort_and_connected_IMO:
 # calculate the frequency of each unique route
 
 #
+a = alltankers_adjusted[alltankers_adjusted['IMO']==9388742]
