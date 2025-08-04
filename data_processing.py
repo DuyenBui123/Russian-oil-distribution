@@ -401,11 +401,27 @@ def freq_of_port_seq(route_RU_int_NL_matched_imoNr):
         else:
             port_sequence[port_list] = port_sequence.get(port_list) + 1
     return port_sequence
-def route_seq_matched_nrimo(route_RU_int_NL_filtered_v2, nr_imo):
+
+def freq_of_country_seq(route_RU_int_NL_matched_imoNr):
+    country_sequence = {}
+    for df in route_RU_int_NL_matched_imoNr:
+    
+        ctry_list = df['Country'].tolist()
+        ctry_list.append(df.iloc[-1]['Arr_Country'])
+        ctry_list = tuple(ctry_list)
+        if ctry_list not in list(country_sequence.keys()):
+            country_sequence[ctry_list] =  1
+        else:
+            country_sequence[ctry_list] = country_sequence.get(ctry_list) + 1
+    return country_sequence
+def route_seq_matched_nrimo(route_RU_int_NL,
+                            req_nr_port, req_nr_imo):
+    filtered_dfs = list(filter(lambda df: df.shape[0] == req_nr_port, 
+                               route_RU_int_NL))
     route_RU_int_NL_matched_imoNr = []
-    for df in route_RU_int_NL_filtered_v2:
+    for df in filtered_dfs:
         info_shared_port = df
-        if len(info_shared_port['IMO'].unique()) == nr_imo: # fill in TOTAL NR. OF PORT ALLOWED
+        if len(info_shared_port['IMO'].unique()) == req_nr_imo: # fill in TOTAL NR. OF PORT ALLOWED
             route_RU_int_NL_matched_imoNr.append(info_shared_port)
     if len(route_RU_int_NL_matched_imoNr) == 0:
         print('No matched results')
@@ -545,3 +561,4 @@ def find_matched_imo_at_shared_port(route_RU_to_NL,alltankers_adjusted,
                     else:
                         next
     return track_route_fr_RU_to_NL
+
