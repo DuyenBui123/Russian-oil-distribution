@@ -33,32 +33,22 @@ if not sys.warnoptions:
     warnings.simplefilter("ignore")
 # %% 
 # %% 
-
-os.chdir("D:/Dropbox/Duyen/University/Master/Year 2/Internship")
-# Create directory to story data  
-datapath_nested_directory = './preprocessing/pp_inter_ouput' 
-try: 
-    os.makedirs(datapath_nested_directory)
-    print(f"Nested directory' '{datapath_nested_directory}' created successfully")
-except FileExistsError:
-    print(f"One or more direcotries in '{datapath_nested_directory}' aldready exist")
-    
-except PermissionError():
-    print(f"Permission denied: Unable to create '{datapath_nested_directory}")
-except Exception as e:
-    print(f"An error occured: {e}")
-# import data
-alltankers = pd.read_csv('./preprocessing/inter_input/All Port calls - NL & RU.csv')
+alltankers = pd.read_csv(
+    './preprocessing/inter_input/All Port calls - NL & RU.csv')
 
 # select data from NL and RU ww only
-alltankers = alltankers[alltankers['PATH'].isin(['Tankers were to NL (worldwide)', 'Tankers were to RU (worldwide)'])]
-alltankers = alltankers[['IMO', 'SHIPTYPE', 'COUNTRY ', 'PORTNAME', 'ARRIVALDATE', 'SAILDATE']]
-alltankers = alltankers.rename(columns = {'SAILDATE' : 'DEPDATE'})
+alltankers = alltankers[alltankers['PATH'].isin(
+    ['Tankers were to NL (worldwide)', 'Tankers were to RU (worldwide)'])]
+# %% preprocessing data
+alltankers = alltankers[['IMO', 'SHIPTYPE',
+                         'COUNTRY ', 'PORTNAME', 'ARRIVALDATE', 'SAILDATE']]
+alltankers = alltankers.rename(columns={'SAILDATE': 'DEPDATE'})
 portname = alltankers['PORTNAME'].drop_duplicates()
 # remove dublicate
 alltankers = alltankers.drop_duplicates()
 # standadize ship name
-alltankers['SHIPTYPE'] = alltankers['SHIPTYPE'].map(lambda x: pp.standadize_ship_type(x))
+alltankers['SHIPTYPE'] = alltankers['SHIPTYPE'].map(
+    lambda x: pp.standadize_ship_type(x))
 # convert columns to the right format
 alltankers['ARRIVALDATE'] = alltankers['ARRIVALDATE'].astype('datetime64[ns]')
 alltankers['DEPDATE'] = alltankers['DEPDATE'].astype('datetime64[ns]')
@@ -79,33 +69,118 @@ for imo in alltankers['IMO'].unique():
     Port2Port['ShipType'] = a_imo['SHIPTYPE']
     Port2Port['Country'] = a_imo['COUNTRY ']
     Port2Port['TravelTime'] = abs(Port2Port['DepDate'] - Port2Port['ArrDate'])
-    Port2Port['BerthTime'] = Port2Port['DepDate'].shift(-1) - Port2Port['ArrDate']
-    alltankers_adjusted = pd.concat([alltankers_adjusted,Port2Port])
-    
-# remove row that contain Nan
-alltankers_adjusted = alltankers_adjusted.dropna(subset = ['DepPort', 'ArrPort'])
-# # sort values to depature date
-# alltankers_adjusted = alltankers_adjusted.sort_values(by = 'DepDate')
-# # Save to CSV
-# alltankers_adjusted_ch = alltankers_adjusted
-# alltankers_adjusted_ch = alltankers_adjusted_ch.rename(columns={'DepPort': 'Source', 'ArrPort':'Target'})
-# alltankers_adjusted_ch.to_csv('./preprocessing/pp_inter_ouput/alltanker.csv', index=False)
-# # Save to CSV
-# alltankers_adjusted_selec = alltankers_adjusted[['IMO', 'DepPort']]
+    Port2Port['BerthTime'] = Port2Port['DepDate'].shift(
+        -1) - Port2Port['ArrDate']
+    alltankers_adjusted = pd.concat([alltankers_adjusted, Port2Port])
 
-# alltankers_adjusted_selec.columns = ['IMO', 'ID']
-# alltankers_adjusted_selec['Name'] = alltankers_adjusted_selec['ID']
-# alltankers_adjusted_selec = alltankers_adjusted_selec.drop_duplicates(subset='ID')
-# alltankers_adjusted_selec.to_csv('./preprocessing/pp_inter_ouput/node.csv', index=False)
+# remove row that contain Nan
+alltankers_adjusted = alltankers_adjusted.dropna(subset=['DepPort', 'ArrPort'])
 
 # # standadize port name
-alltankers_adjusted['DepPort'] = alltankers_adjusted['DepPort'].map(lambda x: 
+alltankers_adjusted['DepPort'] = alltankers_adjusted['DepPort'].map(lambda x:
                                                                     pp.standardize_port_name(x))
-alltankers_adjusted['ArrPort'] = alltankers_adjusted['ArrPort'].map(lambda x: 
-                                                                pp.standardize_port_name(x))
-# save file to csv
+alltankers_adjusted['ArrPort'] = alltankers_adjusted['ArrPort'].map(lambda x:
+                                                                    pp.standardize_port_name(x))
+# adding arrive country column
+port_itscountry = alltankers_adjusted[['DepPort', 'Country']]
+port_itscountry = port_itscountry.drop_duplicates()
+alltankers_adjusted = pd.merge(
+    alltankers_adjusted, port_itscountry, left_on='ArrPort', right_on='DepPort')
+alltankers_adjusted = alltankers_adjusted.rename(columns={
+    'Country_x': 'Country', 'Country_y': 'Arr_Country', 'DepPort_x': 'DepPort'})
+alltankers_adjusted = alltankers_adjusted.drop('DepPort_y', axis=1)
+# Remove all domestic tankers and tanker with non crude or refined oil
+remove_shiptype = ['Asphalt/Bitumen Tanker', 'Oil Bunkering Tanker', 'Shuttle Tanker', 
+                   'Oil Bunkering Tanker (Inland)']
+alltankers_adjusted = alltankers_adjusted[
+    ~alltankers_adjusted['ShipType'].isin(remove_shiptype)]
+interl_imo = []
+for imo in alltankers_adjusted['IMO'].unique():
+    df =  alltankers_adjusted[alltankers_adjusted['IMO'] == imo]
+    if len(df['Country'].unique()) != 1:
+        interl_imo.append(imo)
+    
+alltankers_adjusted = alltankers_adjusted[
+    alltankers_adjusted['IMO'].isin(interl_imo)]    
 
-alltankers_adjusted.to_csv('./preprocessing/inter_input/alltankers.csv', index=False)   
+# combine time for the same ports
+
+mask_dub = alltankers_adjusted['DepPort'] != alltankers_adjusted['ArrPort']
+alltankers_adjusted =   alltankers_adjusted[mask_dub]  
+alltankers_adjusted.to_csv('./processing/pr_inter_input/RU_oil_tankers_data.csv', index = True)  
+
+# os.chdir("D:/Dropbox/Duyen/University/Master/Year 2/Internship")
+# # Create directory to story data  
+# datapath_nested_directory = './preprocessing/pp_inter_ouput' 
+# try: 
+#     os.makedirs(datapath_nested_directory)
+#     print(f"Nested directory' '{datapath_nested_directory}' created successfully")
+# except FileExistsError:
+#     print(f"One or more direcotries in '{datapath_nested_directory}' aldready exist")
+    
+# except PermissionError():
+#     print(f"Permission denied: Unable to create '{datapath_nested_directory}")
+# except Exception as e:
+#     print(f"An error occured: {e}")
+# # import data
+# alltankers = pd.read_csv('./preprocessing/inter_input/All Port calls - NL & RU.csv')
+
+# # select data from NL and RU ww only
+# alltankers = alltankers[alltankers['PATH'].isin(['Tankers were to NL (worldwide)', 'Tankers were to RU (worldwide)'])]
+# alltankers = alltankers[['IMO', 'SHIPTYPE', 'COUNTRY ', 'PORTNAME', 'ARRIVALDATE', 'SAILDATE']]
+# alltankers = alltankers.rename(columns = {'SAILDATE' : 'DEPDATE'})
+# portname = alltankers['PORTNAME'].drop_duplicates()
+# # remove dublicate
+# alltankers = alltankers.drop_duplicates()
+# # standadize ship name
+# alltankers['SHIPTYPE'] = alltankers['SHIPTYPE'].map(lambda x: pp.standadize_ship_type(x))
+# # convert columns to the right format
+# alltankers['ARRIVALDATE'] = alltankers['ARRIVALDATE'].astype('datetime64[ns]')
+# alltankers['DEPDATE'] = alltankers['DEPDATE'].astype('datetime64[ns]')
+# # calculate time a vessel spent in a port for each POC
+# seconds_in_day = 24*60*60
+# alltankers['TIMEINPORT'] = alltankers['DEPDATE'] - alltankers['ARRIVALDATE']
+# # calculate time a vessel travel from one port to another port
+
+# alltankers_adjusted = pd.DataFrame()
+# for imo in alltankers['IMO'].unique():
+#     a_imo = alltankers[alltankers['IMO'] == imo]
+#     Port2Port = pd.DataFrame()
+#     Port2Port['IMO'] = a_imo['IMO']
+#     Port2Port['DepPort'] = a_imo['PORTNAME']
+#     Port2Port['ArrPort'] = a_imo['PORTNAME'].shift(-1)
+#     Port2Port['DepDate'] = a_imo['DEPDATE']
+#     Port2Port['ArrDate'] = a_imo['ARRIVALDATE'].shift(-1)
+#     Port2Port['ShipType'] = a_imo['SHIPTYPE']
+#     Port2Port['Country'] = a_imo['COUNTRY ']
+#     Port2Port['TravelTime'] = abs(Port2Port['DepDate'] - Port2Port['ArrDate'])
+#     Port2Port['BerthTime'] = Port2Port['DepDate'].shift(-1) - Port2Port['ArrDate']
+#     alltankers_adjusted = pd.concat([alltankers_adjusted,Port2Port])
+    
+# # remove row that contain Nan
+# alltankers_adjusted = alltankers_adjusted.dropna(subset = ['DepPort', 'ArrPort'])
+# # # sort values to depature date
+# # alltankers_adjusted = alltankers_adjusted.sort_values(by = 'DepDate')
+# # # Save to CSV
+# # alltankers_adjusted_ch = alltankers_adjusted
+# # alltankers_adjusted_ch = alltankers_adjusted_ch.rename(columns={'DepPort': 'Source', 'ArrPort':'Target'})
+# # alltankers_adjusted_ch.to_csv('./preprocessing/pp_inter_ouput/alltanker.csv', index=False)
+# # # Save to CSV
+# # alltankers_adjusted_selec = alltankers_adjusted[['IMO', 'DepPort']]
+
+# # alltankers_adjusted_selec.columns = ['IMO', 'ID']
+# # alltankers_adjusted_selec['Name'] = alltankers_adjusted_selec['ID']
+# # alltankers_adjusted_selec = alltankers_adjusted_selec.drop_duplicates(subset='ID')
+# # alltankers_adjusted_selec.to_csv('./preprocessing/pp_inter_ouput/node.csv', index=False)
+
+# # # standadize port name
+# alltankers_adjusted['DepPort'] = alltankers_adjusted['DepPort'].map(lambda x: 
+#                                                                     pp.standardize_port_name(x))
+# alltankers_adjusted['ArrPort'] = alltankers_adjusted['ArrPort'].map(lambda x: 
+#                                                                 pp.standardize_port_name(x))
+# # save file to csv
+
+# alltankers_adjusted.to_csv('./preprocessing/inter_input/alltankers.csv', index=False)   
 
 
 
@@ -114,26 +189,26 @@ alltankers_adjusted.to_csv('./preprocessing/inter_input/alltankers.csv', index=F
 
 
 
-# check the pattern of each trip (ploting? - how to see the pattern? find recurring movement?-count how many time?)
-# upgrade this into 2 oil transhipments  
+# # check the pattern of each trip (ploting? - how to see the pattern? find recurring movement?-count how many time?)
+# # upgrade this into 2 oil transhipments  
 
-# check again the IMO selected from 2nd to NL because Zhelezny Rog Port does not lead to NL directly
+# # check again the IMO selected from 2nd to NL because Zhelezny Rog Port does not lead to NL directly
 
-# cons_IMO['Aliaga']
-a = alltankers_adjusted[alltankers_adjusted['IMO'] == 9933573]
-# inter_9749506 =  set(a['DepPort']).intersection(neighbors_Nov)
-#     len(cons_IMO[edges_Nov[1][1]]/2)               
-#    tuple([{'IMO': diff_IMO_at_2ndPort.iloc[0, 0], 'DepPort' :diff_IMO_at_2ndPort.iloc[0, 1]}])         
-# tuple([0, {'DepDate' : diff_IMO_at_2ndPort['DepDate'].iloc[0],
-#  'ArrDate' : diff_IMO_at_2ndPort['ArrDate'].iloc[0],
-#  'IMO': diff_IMO_at_2ndPort['IMO'].iloc[0]}])
+# # cons_IMO['Aliaga']
+# a = alltankers_adjusted[alltankers_adjusted['IMO'] == 9933573]
+# # inter_9749506 =  set(a['DepPort']).intersection(neighbors_Nov)
+# #     len(cons_IMO[edges_Nov[1][1]]/2)               
+# #    tuple([{'IMO': diff_IMO_at_2ndPort.iloc[0, 0], 'DepPort' :diff_IMO_at_2ndPort.iloc[0, 1]}])         
+# # tuple([0, {'DepDate' : diff_IMO_at_2ndPort['DepDate'].iloc[0],
+# #  'ArrDate' : diff_IMO_at_2ndPort['ArrDate'].iloc[0],
+# #  'IMO': diff_IMO_at_2ndPort['IMO'].iloc[0]}])
 
-# b = alltankers_adjusted[alltankers_adjusted['DepPort'].isin(['Novorossiysk']) & 
-#                     alltankers_adjusted['ArrPort'].isin(['Sikka'])]
-# calculate time different and identify IMO in the first ports
-# remove EU port in the second visited port sequence
-# loop through each neighbour, colect IMO, 
-# extract 2 hops
+# # b = alltankers_adjusted[alltankers_adjusted['DepPort'].isin(['Novorossiysk']) & 
+# #                     alltankers_adjusted['ArrPort'].isin(['Sikka'])]
+# # calculate time different and identify IMO in the first ports
+# # remove EU port in the second visited port sequence
+# # loop through each neighbour, colect IMO, 
+# # extract 2 hops
 
 
 
