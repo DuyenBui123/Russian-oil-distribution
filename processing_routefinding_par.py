@@ -8,7 +8,7 @@ Created on Tue Aug  5 02:23:26 2025
 import os
 cwd = os.getcwd()
 os.chdir('D:\\Dropbox\\Duyen\\University\\Master\\Year 2\\Internship\\')
-os.cpu_count() 
+processes = os.cpu_count() - 2
 from itertools import islice
 import sys
 import collections
@@ -184,11 +184,35 @@ while win_time_slide <= iterat_time:
     
     # loop through all neighbours of Novorossiysk
     
+# Parallel computation code for finding route at the first intermediate port
+    # if len(nbs_edges_RU) > processes:
+    #     processes = processes
+    # else:
+    #     processes = 1
+    # chunk_size = len(nbs_edges_RU)//processes
+    # chunks = [nbs_edges_RU[i:i + chunk_size] for i in range(0, len(nbs_edges_RU), chunk_size)]
     
+    
+    #     # prepare argument tuples
+    # args = [(chunk, port_of_russia,
+    # eu_ports, alltankers_adjusted, 
+    # scnd_in_day, low_t_time, up_t_time) for chunk in chunks]
+    
+    # with Pool(processes=processes) as pool:
+    #     track_route_fr_RU_to_2ndPort_and_connected_IMO = pool.starmap(
+    #         pr.find_matched_imo_at_1stshared_port,
+    #         args
+    #     )
+    # track_route_fr_RU_to_2ndPort_and_connected_IMO = list(
+    #     itertools.chain.from_iterable(
+    #         track_route_fr_RU_to_2ndPort_and_connected_IMO))
+
+# code without parallel computation   
     track_route_fr_RU_to_2ndPort_and_connected_IMO = pr.find_matched_imo_at_1stshared_port(
         nbs_edges_RU, port_of_russia,
         eu_ports, alltankers_adjusted, 
         scnd_in_day, low_t_time, up_t_time)
+
     
     # extract route from RU-hotpot-NL and number of IMO difference            
     route_RU_1int_NL = []
@@ -207,24 +231,7 @@ while win_time_slide <= iterat_time:
             route_RU_1int_other.append(df)
     #* save final route from RU to NL
     filtered_final_route_RU_to_NL.append(route_RU_1int_NL)      
-    # # select for the total number of IMO
-    # route_RU_1int_NL_matched_imoNr = []
-    # for df in route_RU_1int_NL:
-    #     info_shared_port = df
-    #     if len(info_shared_port['IMO'].unique()) == 2: # fill in TOTAL NR. OF PORT ALLOWED
-    #         route_RU_1int_NL_matched_imoNr.append(info_shared_port)
-            
-    # # calculate unique route frequency
-    # port_sequence = {}
-    # for df in route_RU_1int_NL_matched_imoNr:
-    
-    #     port_list = df['DepPort'].tolist()
-    #     port_list.append(df.iloc[-1]['ArrPort'])
-    #     port_list = tuple(port_list)
-    #     if port_list not in list(port_sequence.keys()):
-    #         port_sequence[port_list] =  1
-    #     else:
-    #         port_sequence[port_list] = port_sequence.get(port_list) + 1
+
     # delete not necessary variable 
     del  track_route_fr_RU_to_2ndPort_and_connected_IMO
     # iteration calculation
@@ -248,9 +255,14 @@ while win_time_slide <= iterat_time:
         with Pool(5) as p:
            print (p.map(f, [1, 2, 3]))         
            
-    processes = 12
+    
 # phase 2
     while n < m:
+             #* save final routes from RU to NL
+        if len(route_RU_to_NL) >processes:
+            processes = processes
+        else:
+            processes = 1
         chunk_size = len(route_RU_to_NL)//processes
         chunks = [route_RU_to_NL[i:i + chunk_size] for i in range(0, len(route_RU_to_NL), chunk_size)]
         
@@ -276,6 +288,7 @@ while win_time_slide <= iterat_time:
         track_route_fr_RU_to_NL = [lst for lst in track_route_fr_RU_to_NL if len(lst)>0]
         track_route_fr_RU_to_NL = list(itertools.chain.from_iterable(track_route_fr_RU_to_NL))
         
+
     
         route_RU_int_NL, route_RU_int_other = pr.extract_route_RU_to_NL_and_others(
             track_route_fr_RU_to_NL, alltankers_adjusted,
@@ -287,7 +300,7 @@ while win_time_slide <= iterat_time:
         # next port(eu) to NL
         
              #* save final routes from RU to NL
-        if len(route_RU_int_NL) >16:
+        if len(route_RU_int_NL) >processes:
             processes = processes
         else:
             processes = 1
@@ -320,7 +333,7 @@ while win_time_slide <= iterat_time:
         route_RU_int_NL_filtered_v1 = [lst for lst in route_RU_int_NL_filtered_v1 if len(lst)>0]
         route_RU_int_NL_filtered_v1 = list(itertools.chain.from_iterable(route_RU_int_NL_filtered_v1))
         del chunk_size, chunks, args
-        if len(route_RU_int_NL_filtered_v1) >16:
+        if len(route_RU_int_NL_filtered_v1) >processes:
             processes = processes
         else:
             processes = 1
@@ -387,13 +400,13 @@ filtered_final_route_RU_to_NL = joblib.load('./processing/pr_inter_output/route_
 
 filtered_final_route_RU_to_NL_m7 = joblib.load('./processing/pr_inter_output/route_w_1w_7m_old.joblib')    
 filtered_final_route_RU_to_NL_m5 = joblib.load('./processing/pr_inter_output/route_w_2w_5m.joblib') 
-#################### check memory
-# import sys
-from pympler.asizeof import asizeof
-#sys.getsizeof(filtered_final_route_RU_to_NL_old)
-#asizeof(filtered_final_route_RU_to_NL_old)
-sys.getsizeof(filtered_final_route_RU_to_NL)
-asizeof(filtered_final_route_RU_to_NL)
+# %% check memory
+# # import sys
+# from pympler.asizeof import asizeof
+# #sys.getsizeof(filtered_final_route_RU_to_NL_old)
+# #asizeof(filtered_final_route_RU_to_NL_old)
+# sys.getsizeof(filtered_final_route_RU_to_NL)
+# asizeof(filtered_final_route_RU_to_NL)
 
 #%% extract routes further based on requirement dsuch as nr of ports and imo
 # combine all results from different time window slide
@@ -414,13 +427,8 @@ for lst in filtered_final_route_RU_to_NL:
 route_RU_int_NL_matched_imoNr, country_seq, port_sequence = pr.route_seq_matched_nrimo_par(
     final_route_RU_to_NL, alltankers_adjusted, 4, 3, False, loop_type = 'port')
 
-
-
-
-
 route_RU_int_NL_matched_imoNr_mer = pd.concat(route_RU_int_NL_matched_imoNr, 
                                               ignore_index=True)
-
 
 # freq of each trips in each route
 trip_freq_dict =  {}
@@ -507,7 +515,7 @@ for key in key_list:
 
 
         
-        
+# %% Analyze and extract values      
 # # add new value in the exisiting                
 # # delete row used from the original and update        
 
