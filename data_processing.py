@@ -5,7 +5,7 @@ Created on Tue Jul 15 13:44:55 2025
 @author: Duyen
 
 """
-
+import warnings
 import pandas as pd
 import seaborn as sns
 import numpy as np
@@ -15,11 +15,13 @@ import itertools as it
 import networkx as nx
 import datetime
 import collections
+from progressbar import ProgressBar
+from tqdm import tqdm
 # %% old code without parallel computation, old method tracing route all the way to NL from one IMO
 # def potential_IMO_at_shared_port(track_route_fr_RU_to_2ndPort_and_connected_IMO, 
 #                                  route_from_RUport_to_its_nb, start_RU_port, 
 #                                  diff_IMO_at_2ndPort, 
-#                                  scnd_in_day, low_t_time, up_t_time,start_IMO,cons_IMO,cons_IMO_nr):
+#                                  scnd_in_day, lowerbound_time, upperbound_time,start_IMO,cons_IMO,cons_IMO_nr):
     
 #     for row in range(len(route_from_RUport_to_its_nb)):
         
@@ -43,7 +45,7 @@ import collections
 #             time_gap_hr = (time_gap.days*scnd_in_day + time_gap.seconds)/(60*60)
 #             # base on threshold assump to take for oil transshipment. if met 
 #             # the threshold condition, save attributes of that IMO. Otherwise move to the next IMO of IMO available list
-#             if (np.sign(time_gap_hr) == 1) & ((abs(time_gap_hr)>= low_t_time) & (abs(time_gap_hr) < up_t_time)):
+#             if (np.sign(time_gap_hr) == 1) & ((abs(time_gap_hr)>= lowerbound_time) & (abs(time_gap_hr) < upperbound_time)):
 #                 #print(f'time gap after the condition {time_gap_hr}')
     
     
@@ -87,7 +89,7 @@ import collections
 #                                       tracking_each_nb_next_oiltrans_connect_IMO, 
 #                                  route_from_RUport_to_its_nb, start_RU_port, 
 #                                  diff_IMO_at_2ndPort, 
-#                                  scnd_in_day, low_t_time, up_t_time,start_IMO_v1,cons_IMO_v1,cons_IMO_nr_v1):
+#                                  scnd_in_day, lowerbound_time, upperbound_time,start_IMO_v1,cons_IMO_v1,cons_IMO_nr_v1):
 #     start_IMO_v2 = {} # start from a specific RU port. Expect a dict of dict. with the
 #     # first layer contain RU port names and its connected IMO info in general.
 #     # The secondlayer key: nb name and its attributes
@@ -117,7 +119,7 @@ import collections
 #             time_gap_hr = (time_gap.days*scnd_in_day + time_gap.seconds)/(60*60)
 #             # base on threshold assump to take for oil transshipment. if met 
 #             # the threshold condition, save attributes of that IMO. Otherwise move to the next IMO of IMO available list
-#             if (np.sign(time_gap_hr) == 1) & ((abs(time_gap_hr)>= low_t_time) & (abs(time_gap_hr) < up_t_time)):
+#             if (np.sign(time_gap_hr) == 1) & ((abs(time_gap_hr)>= lowerbound_time) & (abs(time_gap_hr) < upperbound_time)):
 #                 #print(f'time gap after the condition {time_gap_hr}')
 
 
@@ -162,7 +164,7 @@ import collections
 #                   track_route_fr_RU_to_2ndPort_and_connected_IMO,
 #                   alltankers_adjusted,
 #                   start_RU_port,
-#                   scnd_in_day, low_t_time, up_t_time
+#                   scnd_in_day, lowerbound_time, upperbound_time
 #                   ):
 #     for node1, value1 in start_IMO.items():
 #         to_delete = []
@@ -221,7 +223,7 @@ import collections
 #                                                   tracking_all_nbs_next_oiltrans_connect_IMO, 
 #                                              route_from_RUport_to_its_nb, start_RU_port, 
 #                                              diff_IMO_at_2ndPort, 
-#                                              scnd_in_day, low_t_time, up_t_time,start_IMO_v2,cons_IMO_v2,cons_IMO_nr_v2)
+#                                              scnd_in_day, lowerbound_time, upperbound_time,start_IMO_v2,cons_IMO_v2,cons_IMO_nr_v2)
 #     # update
 #     start_IMO = start_IMO_v1
 #     cons_IMO = cons_IMO_v1
@@ -415,6 +417,13 @@ def freq_of_country_seq(route_RU_int_NL_matched_imoNr):
         else:
             country_sequence[ctry_list] = country_sequence.get(ctry_list) + 1
     return country_sequence
+
+def depth (givenList):
+  for i in givenList:
+    if not isinstance(i,list):
+        return 1
+    else:
+        return depth(i)+1
 # %% code without parallel computation
 # def route_seq_matched_nrimo(route_RU_int_NL, alltankers_adjusted,
 #                             req_nr_port, req_nr_imo):
@@ -509,8 +518,8 @@ def freq_of_country_seq(route_RU_int_NL_matched_imoNr):
 #     return route_RU_int_NL, route_RU_int_other
 
 # def find_matched_imo_at_shared_port_par(route_RU_to_NL):
-#     up_t_time = 24*7#float('inf')
-#     low_t_time = 0
+#     upperbound_time = 24*7#float('inf')
+#     lowerbound_time = 0
 #     scnd_in_day = 1*24*60*60
 #     data_types = {'IMO' : 'int64', 'DepPort':'object','ArrPort':'object',
 
@@ -559,7 +568,7 @@ def freq_of_country_seq(route_RU_int_NL_matched_imoNr):
 #                     time_gap_hr = (time_gap.days*scnd_in_day + time_gap.seconds)/(60*60)
 #                     # base on threshold assump to take for oil transshipment. if met 
 #                     # the threshold condition, save attributes of that IMO. Otherwise move to the next IMO of IMO available list
-#                     if (np.sign(time_gap_hr) == 1) & ((abs(time_gap_hr)>= low_t_time) & (abs(time_gap_hr) < up_t_time)):
+#                     if (np.sign(time_gap_hr) == 1) & ((abs(time_gap_hr)>= lowerbound_time) & (abs(time_gap_hr) < upperbound_time)):
 #                         #print(f'time gap after the condition {time_gap_hr}')
             
                         
@@ -574,8 +583,8 @@ def freq_of_country_seq(route_RU_int_NL_matched_imoNr):
 #     return track_route_fr_RU_to_NL
 # def find_matched_imo_at_shared_port(route_RU_to_NL,alltankers_adjusted,
 #                                   scnd_in_day,
-#                                   low_t_time,
-#                                   up_t_time
+#                                   lowerbound_time,
+#                                   upperbound_time
 #                                   ):
 #     track_route_fr_RU_to_NL = []
 #     for list_ind in route_RU_to_NL:
@@ -612,7 +621,7 @@ def freq_of_country_seq(route_RU_int_NL_matched_imoNr):
 #                     time_gap_hr = (time_gap.days*scnd_in_day + time_gap.seconds)/(60*60)
 #                     # base on threshold assump to take for oil transshipment. if met 
 #                     # the threshold condition, save attributes of that IMO. Otherwise move to the next IMO of IMO available list
-#                     if (np.sign(time_gap_hr) == 1) & ((abs(time_gap_hr)>= low_t_time) & (abs(time_gap_hr) < up_t_time)):
+#                     if (np.sign(time_gap_hr) == 1) & ((abs(time_gap_hr)>= lowerbound_time) & (abs(time_gap_hr) < upperbound_time)):
 #                         #print(f'time gap after the condition {time_gap_hr}')
             
                         
@@ -627,7 +636,7 @@ def freq_of_country_seq(route_RU_int_NL_matched_imoNr):
 #     return track_route_fr_RU_to_NL
 # %%
 def route_seq_matched_nrimo_par(route_RU_int_NL, alltankers_adjusted,
-                            req_nr_port, req_nr_imo, loop, loop_type = 'country'):
+                            req_nr_port, req_nr_imo, loop, oiltype = 'all', loop_type = 'country'):
     req_nr_port = req_nr_port -1
     filtered_dfs = list(filter(lambda lst: len(lst) == req_nr_port, 
                                route_RU_int_NL))
@@ -654,19 +663,122 @@ def route_seq_matched_nrimo_par(route_RU_int_NL, alltankers_adjusted,
                 route_RU_int_NL_matched_imoNr.append(info_shared_port)
     if len(route_RU_int_NL_matched_imoNr) == 0:
         print('No matched results')
+    
+    
+    ship_type = alltankers_adjusted['ShipType'].unique().tolist()
+    ship_type_nocrude = [t for t in ship_type if t not in ['Crude Oil Tanker', 'Ore/Oil Carrier']]
+    if oiltype != 'all':
+        route_RU_int_NL_filtered_crudeoil = []
+        route_RU_int_NL_filtered_refinedoil = []
+        for df in route_RU_int_NL_matched_imoNr:
+            last_row = df.iloc[-1]
+            if (last_row['ShipType'] == 'Crude Oil Tanker') or (last_row['ShipType'] == 'Crude/Oil Product Tanker') :
+                route_RU_int_NL_filtered_crudeoil.append(df)
+            elif last_row['ShipType'] in ship_type_nocrude:
+                route_RU_int_NL_filtered_refinedoil.append(df)
+    if oiltype == 'crude oil':
+        route_RU_int_NL_matched_imoNr = route_RU_int_NL_filtered_crudeoil
+        if len(route_RU_int_NL_filtered_crudeoil) <2:
+            warnings.warn(f'Not many routes contain crude oil as the last cargo transported to the NL')
+        if len(route_RU_int_NL_filtered_crudeoil) == 0:
+            raise ValueError("The total number of routes after selecting crude "
+                     "oil as the last cargo transported to NL should "
+                     "be greater than 0. Suggest to use 'all' as input "
+                     "for oiltype")
+    elif oiltype == 'refined oil':
+        route_RU_int_NL_matched_imoNr = route_RU_int_NL_filtered_refinedoil
+        if len(route_RU_int_NL_filtered_refinedoil) <2:
+            warnings.warn(f'Not many routes contain refined oil as the last cargo transported to the NL')
+        if len(route_RU_int_NL_filtered_refinedoil) == 0:
+            raise ValueError("The total number of routes after selecting refined "
+                     "oil as the last cargo transported to NL should "
+                     "be greater than 0. Suggest to use 'all' as input "
+                     "for oiltype")
+    
     country_sequence = freq_of_country_seq(route_RU_int_NL_matched_imoNr)
     
     port_sequence = freq_of_port_seq(route_RU_int_NL_matched_imoNr)
-    return route_RU_int_NL_matched_imoNr, country_sequence, port_sequence
+    
+    # freq of each trips in each route
+    trip_freq_dict =  {}
+    routes = route_RU_int_NL_matched_imoNr.copy()
+    while routes:
+        # extract first df 
+        df = routes[0]
+
+        matched_port = []
+        matched_port.append(df)
+        ind = []
+        ind.append(0)
+        
+        # extract all dfs that have the same routes with df (except the first df)
+
+        for row_nx_lst in range(1,len(routes)):
+            df_1 = routes[row_nx_lst]
+            if (df['DepPort'].tolist() + [df.iloc[-1]['ArrPort']]) ==  (df_1['DepPort'].tolist() + [df_1.iloc[-1]['ArrPort']]):
+                matched_port.append(df_1)
+
+                ind.append(row_nx_lst)
+              
+        lgth = len(df) 
+        matched_port = pd.concat(matched_port, ignore_index=True)
+        lgth_wholedf = len(matched_port)
+        segment_freq = {}
+        # if no matched, save the only df directly to a dict
+        if lgth == lgth_wholedf:
+            port_list = matched_port['DepPort'].tolist()
+            port_list.append(matched_port.iloc[-1]['ArrPort'])
+            
+            comb_port = list(zip(port_list, pd.Series(port_list).shift(-1)))
+            comb_port.pop()
+            #segment_freq =[(seg[0], seg[1], 1)for seg in comb_port]
+            segment_freq = {i: (seg,1) for i, seg in enumerate(
+                comb_port)}
+            trip_freq_dict[tuple(port_list)] = segment_freq
+            # remove indices that counted
+            for i in sorted(ind, reverse=True):
+                routes.pop(i)
+        
+        else:
+            # get a list of Depport for the route
+            port_list = df['DepPort'].tolist()
+            port_list.append(df.iloc[-1]['ArrPort'])
+            # for each trip( represented per row) in a route, 
+            # count total number of unique imos taken that trip across all matched df
+            for row_df in range(len(df)):
+                # extract rows in the same order accross all matched routes
+                # generate index for selected row in a merge df from all matched routes
+                ind_list = list(range(row_df, lgth_wholedf, lgth))
+                selected_row_df = matched_port.loc[ind_list]
+                # if all selected rows are duplicated in terms of IMO, the trip was carried by only one imo
+                if len(selected_row_df['IMO'].drop_duplicates()) == 1:
+                    de_arr_port = list(selected_row_df.iloc[0, 
+                                                            [selected_row_df.columns.get_loc('DepPort'),
+                                                             selected_row_df.columns.get_loc('ArrPort')]])
+                    segment_freq[row_df] = tuple([tuple(de_arr_port), 1])
+                # else more than one IMO using the same trip
+                else:
+                    de_arr_port = list(selected_row_df.iloc[0, 
+                                        [selected_row_df.columns.get_loc('DepPort'),
+                                         selected_row_df.columns.get_loc('ArrPort')]])
+                    selected_row_df =  selected_row_df['IMO'].drop_duplicates()
+                    segment_freq[row_df] = tuple([tuple(de_arr_port), len(selected_row_df)])
+                trip_freq_dict[tuple(port_list)] = segment_freq
+            # remove indices that counted
+            for i in sorted(ind, reverse=True):
+                routes.pop(i)
+        
+    return route_RU_int_NL_matched_imoNr, trip_freq_dict, country_sequence, port_sequence
 def extract_route_RU_to_NL_and_others(track_route_fr_RU_to_NL, alltankers_adjusted,
                                       bwtcentr_w_NLport,
                                       bwtcentr_ports):
+    print('Progress in extracting routes to NL:')
     # extract port NL
     route_RU_int_NL = []
     route_RU_int_other = []
     # extract route from RU-aport-NL
     # check hotpot
-    for list_ind in track_route_fr_RU_to_NL:
+    for list_ind in tqdm(track_route_fr_RU_to_NL, total = len(track_route_fr_RU_to_NL)):
         df = alltankers_adjusted.loc[list_ind]
         info_shared_port = df.iloc[-1]
         if (info_shared_port['ArrPort'] in (bwtcentr_w_NLport)):
@@ -682,9 +794,10 @@ def extract_route_RU_to_NL_and_others(track_route_fr_RU_to_NL, alltankers_adjust
 
 def find_matched_imo_at_1stshared_port(nbs_edges_RU, port_of_russia,
                                        eu_ports, alltankers_adjusted,
-                                       scnd_in_day, low_t_time, up_t_time):
+                                       scnd_in_day, lowerbound_time, upperbound_time):
+    print('Progress in finding matching IMO at the first shared port:')
     track_route_fr_RU_to_2ndPort_and_connected_IMO = []
-    for edge in nbs_edges_RU:
+    for edge in tqdm(nbs_edges_RU, total = len(nbs_edges_RU)):
         #edge = nbs_edges_RU[1]
     
         # extract route from a RU port to its neighbout
@@ -728,7 +841,7 @@ def find_matched_imo_at_1stshared_port(nbs_edges_RU, port_of_russia,
                         time_gap_hr = (time_gap.days*scnd_in_day + time_gap.seconds)/(60*60)
                         # base on threshold assump to take for oil transshipment. if met 
                         # the threshold condition, save attributes of that IMO. Otherwise move to the next IMO of IMO available list
-                        if (np.sign(time_gap_hr) == 1) & ((abs(time_gap_hr)>= low_t_time) & (abs(time_gap_hr) < up_t_time)):
+                        if (np.sign(time_gap_hr) == 1) & ((abs(time_gap_hr)>= lowerbound_time) & (abs(time_gap_hr) < upperbound_time)):
                             #print(f'time gap after the condition {time_gap_hr}')
                 
                 
@@ -747,14 +860,15 @@ def find_matched_imo_at_1stshared_port(nbs_edges_RU, port_of_russia,
     return track_route_fr_RU_to_2ndPort_and_connected_IMO
 
 def find_matched_imo_at_shared_port_noloop_par(route_RU_to_NL,
-                                               up_t_time, low_t_time,
+                                               upperbound_time, lowerbound_time,
                                                alltankers_adjusted,
                                                scnd_in_day, loop, loop_type = 'country'):
 
     track_route_fr_RU_to_NL = []
+
     for list_ind in route_RU_to_NL:
         # Extract df based on index 
-
+    
         df = alltankers_adjusted.loc[list_ind]
 
         arr_port = df['ArrPort'].iloc[-1]
@@ -795,7 +909,7 @@ def find_matched_imo_at_shared_port_noloop_par(route_RU_to_NL,
                             time_gap_hr = (time_gap.days*scnd_in_day + time_gap.seconds)/(60*60)
                             # base on threshold assump to take for oil transshipment. if met 
                             # the threshold condition, save attributes of that IMO. Otherwise move to the next IMO of IMO available list
-                            if (np.sign(time_gap_hr) == 1) & ((abs(time_gap_hr)>= low_t_time) & (abs(time_gap_hr) < up_t_time)):
+                            if (np.sign(time_gap_hr) == 1) & ((abs(time_gap_hr)>= lowerbound_time) & (abs(time_gap_hr) < upperbound_time)):
                                 #print(f'time gap after the condition {time_gap_hr}')
                     
                                 
@@ -845,7 +959,7 @@ def find_matched_imo_at_shared_port_noloop_par(route_RU_to_NL,
                             time_gap_hr = (time_gap.days*scnd_in_day + time_gap.seconds)/(60*60)
                             # base on threshold assump to take for oil transshipment. if met 
                             # the threshold condition, save attributes of that IMO. Otherwise move to the next IMO of IMO available list
-                            if (np.sign(time_gap_hr) == 1) & ((abs(time_gap_hr)>= low_t_time) & (abs(time_gap_hr) < up_t_time)):
+                            if (np.sign(time_gap_hr) == 1) & ((abs(time_gap_hr)>= lowerbound_time) & (abs(time_gap_hr) < upperbound_time)):
                                 #print(f'time gap after the condition {time_gap_hr}')
                     
                                 
@@ -882,7 +996,7 @@ def find_matched_imo_at_shared_port_noloop_par(route_RU_to_NL,
                         time_gap_hr = (time_gap.days*scnd_in_day + time_gap.seconds)/(60*60)
                         # base on threshold assump to take for oil transshipment. if met 
                         # the threshold condition, save attributes of that IMO. Otherwise move to the next IMO of IMO available list
-                        if (np.sign(time_gap_hr) == 1) & ((abs(time_gap_hr)>= low_t_time) & (abs(time_gap_hr) < up_t_time)):
+                        if (np.sign(time_gap_hr) == 1) & ((abs(time_gap_hr)>= lowerbound_time) & (abs(time_gap_hr) < upperbound_time)):
                             #print(f'time gap after the condition {time_gap_hr}')
                 
                             
@@ -894,6 +1008,7 @@ def find_matched_imo_at_shared_port_noloop_par(route_RU_to_NL,
                             
                         else:
                             next
+
     return track_route_fr_RU_to_NL
 
 
@@ -912,39 +1027,45 @@ def filter1(route_RU_int_NL, alltankers_adjusted, ru_country, port_of_russia):
 
 def filter2(route_RU_int_NL_filtered_v1, alltankers_adjusted, eu_ports
             ):
+    """Function assess the hypothesis: if there is any EU port in the route,
+     the trips connected to these EU ports have to have the same IMO"""
     
     route_RU_int_NL_filtered_v2 = []
-    
+
     for list_ind in route_RU_int_NL_filtered_v1:
         df = alltankers_adjusted.loc[list_ind]
-    
+        # check if any depport in the sequence is an EU port
         if df['DepPort'].isin(eu_ports).any():
             depPort = np.array(df['DepPort'])
+            # determine the location/index order of the EU port(s) in the route sequence
             mask_euport = np.isin(depPort, eu_ports)
             ind = np.where(mask_euport)[0].tolist()
-            if len(ind) == 1:
+            if len(ind) == 1: # if only one EU port included
+            # check whether the IMO before it the same, if yes, save
                 if df['IMO'].iloc[ind[0]] == df['IMO'].iloc[(ind[0]-1)]:
                     route_RU_int_NL_filtered_v2.append(list_ind)
-                else:
+                else: # if not remove
                     next
-            else:
+            else: # if there are more than one EU port in the route sequence
                 boo_check = []
-                for indx in ind:
+                for indx in ind: # check whether the IMO constraint meet for each EU port
                     if df['IMO'].iloc[indx] == df['IMO'].iloc[(indx -1)]:
-                        if indx < len(df)-1:
+                        if indx < len(df)-1: # if that EU port not the port connect
+                        # or go direct to NL, also check the IMO of the trip after it
                             if df['IMO'].iloc[indx] == df['IMO'].iloc[(indx + 1)]:
                                 boo_check.append(True)
                             else:
                                 boo_check.append(False)
                                 
-                        else:
+                        else: 
                             boo_check.append(True)
                     else:
                         boo_check.append(False)
+                # if the IMO of all EU ports meet the condition, save the route
                 if len(boo_check) > 0 and all(boo_check):
                     route_RU_int_NL_filtered_v2.append(list_ind)
                         
-        else: 
+        else: # if not, save the route directly
             route_RU_int_NL_filtered_v2.append(list_ind)
             
     return route_RU_int_NL_filtered_v2
