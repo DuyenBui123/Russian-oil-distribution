@@ -15,9 +15,12 @@ import joblib
 import multiprocess
 from  multiprocess import Pool
 import tqdm
+from memory_profiler import profile
+from datetime import datetime
 if not sys.warnoptions:
     import warnings
     warnings.simplefilter("ignore")
+@profile
 def route_finding(start_RU_port, end_port, lowerbound_time, upperbound_time,
                   win_time_slide, iterat_time, 
                   strike, tot_nr_port, outputpath, Graph_whole_dataset, 
@@ -111,12 +114,12 @@ Returns:
     # check the value of iterat_time. The maximun number of the iteration depends
     # on the total number of ports requested and the total study period
     # consider time interval is 1 month
-    total_months_in_data = alltankers_adjusted['ArrDate'].sort_values().iloc[-1] - alltankers_adjusted['DepDate'].sort_values().iloc[0]
-    total_months_in_data = round(total_months_in_data.days/30.25, 0)
-    expected_max_iter_nr = total_months_in_data - tot_nr_port
-    if iterat_time > expected_max_iter_nr:
-        raise ValueError('The total iteration number should be smaller or equal'
-                         f' {expected_max_iter_nr} to receive a compete output')
+    # total_months_in_data = alltankers_adjusted['ArrDate'].sort_values().iloc[-1] - alltankers_adjusted['DepDate'].sort_values().iloc[0]
+    # total_months_in_data = round(total_months_in_data.days/30.25, 0)
+    # expected_max_iter_nr = total_months_in_data - tot_nr_port
+    # if iterat_time > expected_max_iter_nr:
+    #     raise ValueError('The total iteration number should be smaller or equal'
+    #                      f' {expected_max_iter_nr} to receive a compete output')
         
     # the total number of port has to be >= 3
     
@@ -137,8 +140,11 @@ Returns:
     processes = os.cpu_count() - 2
     scnd_in_day = 1*24*60*60 #(in seconds)
     start_time = time.time()
+
     while win_time_slide <= iterat_time:
-        print(f'Window slide iteration number: {win_time_slide}')
+        ts =datetime.fromtimestamp(time.time())
+        print(f'Window slide iteration number: {win_time_slide},'
+              f' at time{ts.strftime("%Y-%m-%d %H:%M:%S")}')
 
         if strike == 'None':     
             # update time interval after each iteration
@@ -264,14 +270,15 @@ Returns:
             
                 # prepare argument tuples
             args = [(chunk, ori_upperbound_time, ori_lowerbound_time, alltankers_adjusted,
-                                                            scnd_in_day, True, 'country') for chunk in chunks]
+                                                            scnd_in_day, loop, loop_type) for chunk in chunks]
             print('Progress in finding matching IMO at a shared port')
             # finding matched trip at the next intermediate ports. Loops are handled
             # in this function
             with Pool(processes=processes) as pool:
                 track_route_fr_RU_to_NL = list(tqdm.tqdm(pool.starmap(pr.find_matched_imo_at_shared_port_noloop_par, args), total=len(args)))
 
-            
+            # ADD Here
+            runtime_and_mem.loc[win_time_slide-1, 'Used Mem'] = psutil.virtual_memory().percent
             del args
             if len(track_route_fr_RU_to_NL) == 0:
                 raise ValueError('The total number of possible routes after filtering'
@@ -377,8 +384,11 @@ Returns:
 
         run_time = (time.time() - start_time)
         runtime_and_mem.loc[win_time_slide-1, 'Nr of Iter'] = win_time_slide
-        runtime_and_mem.loc[win_time_slide-1, 'Used Mem'] = psutil.virtual_memory().percent
+        
         runtime_and_mem.loc[win_time_slide-1, 'Run Time'] = run_time
+        # can DELETE late for this save
+        namecsv = f'./processing/pr_inter_output/Performance_nrRU_{len(start_RU_port)}_nrtotport_{tot_nr_port+1}_wloop.csv'
+        runtime_and_mem.to_csv(namecsv)
 
         # update time interval after each window slide iteration
         if strike == 'None':
@@ -391,6 +401,8 @@ Returns:
            win_time_slide = win_time_slide+1
           
         routes_comb_w_multi_win_sld.append(filtered_final_route_RU_to_NL)
+        # can DELETE late for this save
+        joblib.dump(routes_comb_w_multi_win_sld, outputpath)
 
         # restart number of iteration after each window slide iteration
         n = start_iter
@@ -412,6 +424,6 @@ Returns:
 
     # save the final output
     joblib.dump(final_route_RU_to_NL, outputpath)
-    namecsv = f'./processing/pr_inter_output/Performance_nrRU_{len(start_RU_port)}_nrtotport_{tot_nr_port+1}.csv'
+    namecsv = f'./processing/pr_inter_output/Performance_nrRU_{len(start_RU_port)}_nrtotport_{tot_nr_port+1}_wloop.csv'
     runtime_and_mem.to_csv(namecsv)
     return final_route_RU_to_NL

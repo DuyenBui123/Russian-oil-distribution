@@ -787,3 +787,73 @@ with open('./processing/pr_inter_output/route_w_2w_8m.pkl', 'wb') as outp:
 
 # Save
 joblib.dump(filtered_final_route_RU_to_NL, './processing/pr_inter_output/route_w_2w_8m.joblib')
+
+
+
+
+
+if len(route_RU_int_NL) >processes:
+    processes = processes
+else:
+    processes = 1
+     
+chunk_size = len(route_RU_int_NL)//processes
+print('chunk_size of iter', n, chunk_size, 'en length of the whole route', len(route_RU_int_NL))
+chunks = [route_RU_int_NL[i:i + chunk_size] for i in range(0, len(route_RU_int_NL), chunk_size)]
+pool = multiprocess.Pool(processes = processes)
+# prepare argument tuples
+args = [(chunk, alltankers_adjusted, ru_country, port_of_russia) for chunk in chunks]
+with Pool(processes=processes) as pool:
+    route_RU_int_NL_filtered_v1 = pool.starmap(pr.filter1, args)
+    
+if len(route_RU_int_NL_filtered_v1) == 0:
+    raise ValueError('The total number of possible routes from RU to NL'
+                     ' has to be greater than 0. It is possible that'
+                     ' the time interval is too small, not many available'
+                     ' IMOs meets the requirements. No routes match the'
+                     ' requirements, after filtering all'
+                     ' routes containing a RU port in the sequence going'
+                     ' direct to NL')
+  
+
+route_RU_int_NL_filtered_v1 = [lst for lst in route_RU_int_NL_filtered_v1 if len(lst)>0]
+route_RU_int_NL_filtered_v1 = list(itertools.chain.from_iterable(route_RU_int_NL_filtered_v1))
+del chunk_size, chunks, args
+if len(route_RU_int_NL_filtered_v1) >processes:
+    processes = processes
+else:
+    processes = 1
+chunk_size = len(route_RU_int_NL_filtered_v1)//processes
+chunks = [route_RU_int_NL_filtered_v1[i:i + chunk_size] for i in range(0, len(route_RU_int_NL_filtered_v1), chunk_size)]
+args = [(chunk,  alltankers_adjusted, eu_ports) for chunk in chunks]
+with Pool(processes=processes) as pool:
+    route_RU_int_NL_filtered_v2 = pool.starmap(pr.filter2, args)
+
+del chunk_size, chunks, args
+
+if len(route_RU_int_NL_filtered_v2) == 0:
+    raise ValueError(' The total number of possible routes from RU to NL'
+                     ' has to be greater than 0. It is possible that'
+                     ' the defined time interval is too small, not many available'
+                     ' IMOs meets the requirements. No routes match the'
+                     ' requirements, after filtering all'
+                     ' routes that contain different IMOs from an EU country'
+                     ' to NL')
+
+
+route_RU_int_NL_filtered_v2 = [lst for lst in route_RU_int_NL_filtered_v2 if len(lst)>0]
+route_RU_int_NL_filtered_v2 = list(itertools.chain.from_iterable(route_RU_int_NL_filtered_v2))
+
+filtered_final_route_RU_to_NL.append(route_RU_int_NL_filtered_v2)
+if len(route_RU_int_NL_filtered_v2) == 0:
+    # displaying the warning
+    warnings.warn(f'The total number of possible routes from RU to NL'
+                  f' after all filter equal 0 when total number of port'
+                  f' reach {tot_nr_port + 2}')
+# update list of routes for the next round iteration
+route_RU_to_NL = route_RU_int_other
+del route_RU_int_NL_filtered_v2, route_RU_int_NL_filtered_v1, route_RU_int_NL
+
+if len(route_RU_int_other) == 0:
+    raise ValueError('The total number of possible routes for the'
+                     ' next iteration should be larger than 0')
