@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import re
 import itertools as it
 import networkx as nx
-import datetime
+
 
 def check_nan_duplicate(df):
     #"tanker_were_to_NL_ww"
@@ -239,55 +239,9 @@ def plot_boxplot(df1, df2):
     ax_freq_type.tick_params(axis='x', rotation= 90)
     plt.title('Relationship between tanker types and their port call frequency')
     plt.show()
-# # create a frequency table and stacked bar plot for shiptype and range of frequency
-# labels = ['1', '2–10', '11–50', '51–100', '101–400', '401–700', '701–800', '>800']
-# shiptype = tanker_were_to_NL_ww['SHIPTYPE'].unique().tolist()
-# freq_stack_shiptype = pd.DataFrame(columns=shiptype + ["range"])
-# freq_stack_shiptype['range'] = labels
-# for range_freq in labels:
-#     per_range = IMO_NL_ww_df[IMO_NL_ww_df['range'] == range_freq]
-#     count_per_range = per_range['SHIPTYPE'].value_counts().reset_index()
-#     count_per_range.columns = ['SHIPTYPE', 'Frequency']
-
-#     for ship_type in shiptype:
-#         if ship_type in count_per_range['SHIPTYPE'].tolist():
-#             freq_stack_shiptype.loc[freq_stack_shiptype['range'] == range_freq, ship_type] = count_per_range['Frequency'][count_per_range['SHIPTYPE'] == ship_type].item()
-#         else:
-#             freq_stack_shiptype.loc[freq_stack_shiptype['range'] == range_freq, ship_type] = 0
-
-
-# # plot data in stack manner of bar type
-# freq_stack_shiptype.plot(x='range', kind='bar', stacked=True,
-#         title='Contribution of ship types to the total frequency of each bin')
-# plt.show()
 
 
 
-
-# determine the relationship between tankers vs hours in port
-# check unique type of tankers
-
-def parse_unloco_coords(coord):
-    """
-    Convert UN/LOCODE coords (e.g. "4042N 07400W") to decimal lat/lon.
-    """
-    try:
-        lat, lon = coord.split()
-        # Latitude
-        la_deg = int(lat[:-3])
-        la_min = int(lat[-3:-1])
-        lat_dec = la_deg + la_min/60
-        if lat[-1] == 'S':
-            lat_dec = -lat_dec
-        # Longitude
-        lo_deg = int(lon[:-4])
-        lo_min = int(lon[-4:-2])
-        lon_dec = lo_deg + lo_min/60
-        if lon[-1] == 'W':
-            lon_dec = -lon_dec
-        return lat_dec, lon_dec
-    except:
-        return None, None
 
 
 

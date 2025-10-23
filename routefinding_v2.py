@@ -3,6 +3,8 @@
 Created on Tue Aug 19 08:00:48 2025
 
 @author: Duyen
+
+This script provides the main function of path-search algorithm
 """
 
 # -*- coding: utf-8 -*-
@@ -19,124 +21,124 @@ import pandas as pd
 from Code import data_processing as pr
 import psutil
 import joblib
-import multiprocess
 from  multiprocess import Pool
 import tqdm
-from memory_profiler import profile
 from datetime import datetime
-import psutil, os, time, threading
 if not sys.warnoptions:
     import warnings
     warnings.simplefilter("ignore")
 #@profile
 def route_finding(start_RU_port, end_port, lowerbound_time, upperbound_time,
                   win_time_slide, iterat_time, 
-                  strike, tot_nr_port, outputpath, Graph_whole_dataset, 
+                  strike, tot_nr_port, nr_imo, outputpath, Graph_whole_dataset, 
                   port_of_russia, eu_ports, port_of_interest,
-                  alltankers_adjusted, ru_country,RU_to_NL_con, IMO_con, loop, loop_type):
-    """
-Function finding all possible routes from givens start ports and end ports. 
-The result of extracted routes can vary based on the prior determined rules such as:
+                  alltankers_adjusted, ru_country, loop, loop_type, RU_to_NL = False, RU_to_NL_con = False, IMO_con = False):
+    """Function finding all possible routes from givens start ports and end ports.
+    The results are saved in the joblib format
+    
+    When users wanted to extracted the entire routes starting from Russia and ending at the Netherlands
+     (Russian Dutch case), then the following rules are applied:
+        The result of extracted routes can vary based on the prior determined rules such as:
+    
+        + No EU or RU ports in the first intermediate ports with a start port from a RU port
+    
+        + If a route includes an EU port before arriving to an NL port, the same IMO is used to 
+        transport oil from e.g. a non EU port->EU port->NL 
+    
+    The generic results can be filtered by users using the following rules:
 
-+ No EU or RU ports in the first intermediate ports with a start port from a RU port
-
-+ If a route includes an EU port before arriving to an NL port, the same IMO is used to 
-transport oil from e.g. a non EU port->EU port->NL port
-
-Extra rules can be set based on the preference of users such as:
-+ Connection time between two trips
-+ Circular routes 
-+ Ship type
-+ Ports of interest
-
-Args:
-    start_RU_port (list of strings): a list of RU port names where a route begins.
-    These ports were selected based on the highest betweeness centrality
-    
-    end_port (list of strings): a list of NL/or any port names where a route ends.
-    These ports were selected based in the highest betweeness centrality
-    
-    lowerbound_time (int): in hours, the lower bound of the time interval used
-    to find matching IMOs at a shared port
-    
-    upperbound_time (int) : in hours, the upper bound of the time interval used
-    to find matching IMO at a shared port
-    
-    win_time_slide (int): used to extend the interval time (including lower- and
-                        and upper-bound). This parameter allows to extend a constant
-                        time distance based on the initial defined interval.
-                        If this parameter is deactivated, it functions as a iteration
-                        counter for a while-loop
-                        
-    strike (int): in hours. Similar to the win_time_slide, but it allows to extend
-    an inconsistent time distance
-    
-    iterat_time (int): the total number of iteration time will allow to update 
-    and exent the lower- and upper-bound of the time interval used to find new 
-    matching IMOs at a shared port
-    
-    tot_nr_port (int): Total number of ports included in a compete route. The
-    minimun total number of ports is 3
-    
-    outputpath (string): path and name of output file
-    
-    Graph_whole_dataset: a multi-directed graph containing all ports as nodes and 
-    all connections between the ports as edges of the whole data. It was constructed
-    using networkx package
-    
-    port_of_russia (list of string): a list of Russian ports
-    
-    eu_ports (list of string): a list of ports in EU
-    
-    port_of_interest (list of string): a list of ports belong to the countries of 
-    interest. In this case well-known refinery countries. These ports were selected
-    based on the highest betweeness centrality
-    
-    ru_country (string): name of the country
-    
-    alltankers_adjusted (dataframe): A dataframe contains all ports of call of 
-    all IMOs. It requires to have the follow columns:
-        Index
-        IMO
-        DepPort
-        ArrPort
-        DepDate
-        ArrDate
-        Country
-        Arr_Country
-        ShipType
-        
-    loop (bool): a boolean input with True: remove all circular routes in a route
-    with False keeping all types of routes
-    
-    loop_type (string): there are two types of loops: port and country.
-    A route can contain a port/or country more than once in its sequence
+        Extra rules can be set based on the preference of users such as:
+        + Connection time between two trips
+        + Circular routes 
+        + Ship type
+        + Ports of interest
     
 
+    Parameters
+    ----------
+    start_RU_port : list of strings
+        a list of start ports where a route begins.
 
-Returns:
-    final_route_RU_to_NL (list of list): a list of index lists. Each index list
+    end_port : list of strings
+        a list of destination ports where a route ends.
+    lowerbound_time : int
+        in hours, the lower bound of the time interval used
+        to find matching IMOs at a shared port.
+    upperbound_time : int
+        in hours, the upper bound of the time interval used
+        to find matching IMO at a shared port.
+    win_time_slide : int
+        used to extend the interval time (including lower- and
+                            and upper-bound). This parameter allows to extend a constant
+                            time distance based on the initial defined interval.
+                            If this parameter is deactivated, it functions as a iteration
+                            counter for a while-loop.
+    iterat_time : int
+        the total number of iteration time will allow to update 
+        and exent the lower- and upper-bound of the time interval used to find new 
+        matching IMOs at a shared port.
+    strike : int
+        in hours. Similar to the win_time_slide, but it allows to extend
+        an inconsistent time distance.
+    tot_nr_port : int
+        Total number of ports included in a compete route. The
+        minimun total number of ports is 3.
+    nr_imo : int and string ('1' or 'all')
+        Users specify the number of unique tankers allowed in extracted routes
+        '1' means routes opterated by a single tanker
+        'all' means no restriction in number of tankers.
+    outputpath : string
+        path and name of output file.
+    Graph_whole_dataset : graph
+        a multi-directed graph containing all ports as nodes and 
+        all connections between the ports as edges of the whole data. It was constructed
+        using networkx package.
+    port_of_russia : list of string
+        a list of Russian ports.
+    eu_ports : list of string
+        a list of ports in EU.
+    port_of_interest : list of string
+        a list of ports belong to the countries of 
+        interest. In this case well-known refinery countries.
+    alltankers_adjusted : dataframe
+        A dataframe contains all ports of call of 
+       all IMOs. It requires to have the follow columns:
+           Index
+           IMO
+           DepPort
+           ArrPort
+           DepDate
+           ArrDate
+           Country
+           Arr_Country
+           ShipType.
+    ru_country : string
+        name of the start country.
+    RU_to_NL : boolean
+        Russian Dutch case. The default is False.
+    RU_to_NL_con : boolean
+        Russian Dutch case. The default is False.
+    IMO_con : boolean
+        Russian Dutch case. The default is False.
+    loop : boolean
+        a boolean input with True: remove all circular routes in a route
+        with False keeping all types of routes.
+    loop_type : boolean
+        there are two types of loops: port and country.
+        A route can contain a port/or country more than once in its sequence.
+
+    Returns
+    -------
+    final_route_RU_to_NL : list of list
+    a list of index lists. Each index list
     contains a sequence of a full route. To view all data of the routes, using 
     the original data table (alltanker_adjusted)
-"""
-    # check the value of iterat_time. The maximun number of the iteration depends
-    # on the total number of ports requested and the total study period
-    # consider time interval is 1 month
-    # total_months_in_data = alltankers_adjusted['ArrDate'].sort_values().iloc[-1] - alltankers_adjusted['DepDate'].sort_values().iloc[0]
-    # total_months_in_data = round(total_months_in_data.days/30.25, 0)
-    # expected_max_iter_nr = total_months_in_data - tot_nr_port
-    # if iterat_time > expected_max_iter_nr:
-    #     raise ValueError('The total iteration number should be smaller or equal'
-    #                      f' {expected_max_iter_nr} to receive a compete output')
-        
-    # the total number of port has to be >= 3
-    
-    # if tot_nr_port < 3:
-    #     raise ValueError('The total number of ports needs to be larger than '
-    #                      'or equal 3')
+
+    """
+
+
     # Assess scalable of the algorithm
     runtime_and_mem = pd.DataFrame(columns = ['Nr of Iter', 'Used Mem', 'Run Time'])
-    runtime_and_mem_for_smaller_it = pd.DataFrame(columns = ['Nr of Iter', 'Used Mem', 'Used Mem2','Run Time'])
     # a list to collect final result
     routes_comb_w_multi_win_sld = []
     start_iter = 0
@@ -149,6 +151,7 @@ Returns:
     processes = os.cpu_count() - 2
     scnd_in_day = 1*24*60*60 #(in seconds)
     start_time = time.time()
+    # processes = 4
 
     while win_time_slide <= iterat_time:
         ts =datetime.fromtimestamp(time.time())
@@ -217,9 +220,9 @@ Returns:
     # and ports constraints
 
         track_route_fr_RU_to_2ndPort_and_connected_IMO = pr.find_matched_imo_at_1stshared_port(
-            nbs_edges_RU, port_of_russia,
-            eu_ports, alltankers_adjusted, 
-            scnd_in_day, lowerbound_time, upperbound_time)
+            nbs_edges_RU, tot_nr_port, nr_imo, port_of_russia,eu_ports, 
+            alltankers_adjusted, scnd_in_day, lowerbound_time,
+            upperbound_time, RU_to_NL)
     
         
         # extract route from RU-hotpot-NL and number of IMO difference            
@@ -227,10 +230,10 @@ Returns:
         route_RU_1int_other = [] # routes not to NL
         # extract route from RU-aport-NL
         for df in track_route_fr_RU_to_2ndPort_and_connected_IMO:
-        
+
             info_shared_port = alltankers_adjusted.loc[df]
             # the arrival port is in NL?
-            if (info_shared_port['ArrPort'].isin(end_port)).any():
+            if info_shared_port['ArrPort'].iloc[-1] in end_port:
                 if RU_to_NL_con:
                     # the route contain port of interest?
                     if (info_shared_port['DepPort'].isin(port_of_interest)).any():
@@ -242,7 +245,7 @@ Returns:
                 route_RU_1int_other.append(df)
         #* save final routes from RU to NL
         filtered_final_route_RU_to_NL.append(route_RU_1int_NL)   
-        
+
 
     
         # delete not necessary variables 
@@ -281,9 +284,9 @@ Returns:
             chunk_size = len(route_RU_to_NL)//processes
             chunks = [route_RU_to_NL[i:i + chunk_size] for i in range(0, len(route_RU_to_NL), chunk_size)]
             
-            
+            nr_imo = nr_imo
                 # prepare argument tuples
-            args = [(chunk, ori_upperbound_time, ori_lowerbound_time, alltankers_adjusted,
+            args = [(chunk, ori_upperbound_time, nr_imo, ori_lowerbound_time, alltankers_adjusted,
                                                             scnd_in_day, loop, loop_type) for chunk in chunks]
             print('Progress in finding matching IMO at a shared port')
             # finding matched trip at the next intermediate ports. Loops are handled
@@ -291,12 +294,15 @@ Returns:
 
             with Pool(processes=processes) as pool:
                 track_route_fr_RU_to_NL = list(tqdm.tqdm(pool.starmap(pr.find_matched_imo_at_shared_port_noloop_par, args), total=len(args)))
-
+            # track_route_fr_RU_to_NL = pr.find_matched_imo_at_shared_port_noloop_par(route_RU_to_NL,
+            #                                                 upperbound_time, nr_imo, lowerbound_time,
+            #                                                 alltankers_adjusted,
+            #                                                 scnd_in_day, loop, loop_type = 'country')
             # ADD Here
             runtime_and_mem.loc[win_time_slide-1, 'Used Mem'] = psutil.virtual_memory().percent
 
             
-            del args
+            # del args
             if len(track_route_fr_RU_to_NL) == 0:
                 raise ValueError('The total number of possible routes after filtering'
                                  ' based on the pre-defined conditions should be larger than 0.'
@@ -319,44 +325,13 @@ Returns:
                                  ' IMOs meet the requirements.'
                                  ' Check route_RU_int_NL ')
          
-            # if loop allowed and do not allow a direct trip from RU to NL within 
-            # the routes sequence, filter those routes out
-
-            # if len(route_RU_int_NL) >processes:
-            #     processes = processes
-            # else:
-            #     processes = 1
-                 
-            # chunk_size = len(route_RU_int_NL)//processes
-            # #print('chunk_size of iter', n, chunk_size, 'en length of the whole route', len(route_RU_int_NL))
-            # chunks = [route_RU_int_NL[i:i + chunk_size] for i in range(0, len(route_RU_int_NL), chunk_size)]
-            # # prepare argument tuples
-            # args = [(chunk, alltankers_adjusted, ru_country, port_of_russia) for chunk in chunks]
-            
-            # print('Progress in filter 1')
-            # with Pool(processes=processes) as pool:
-            #     route_RU_int_NL_filtered_v1 = list(tqdm.tqdm(pool.starmap(pr.filter1, args), total=len(args)))
-                
-            # if len(route_RU_int_NL_filtered_v1) == 0:
-            #     raise ValueError('The total number of possible routes from RU to NL'
-            #                      ' has to be greater than 0. It is possible that'
-            #                      ' the time interval is too small, not many available'
-            #                      ' IMOs meets the requirements. No routes match the'
-            #                      ' requirements, after filtering all'
-            #                      ' routes containing a RU port in the sequence going'
-            #                      ' direct to NL')
-              
-            # # remove empty list
-            # route_RU_int_NL_filtered_v1 = [lst for lst in route_RU_int_NL_filtered_v1 if len(lst)>0]
-            # # unlist
-            # route_RU_int_NL_filtered_v1 = list(itertools.chain.from_iterable(route_RU_int_NL_filtered_v1))
-            # del chunk_size, chunks, args
             # identify number of cores
             if IMO_con:
                 if len(route_RU_int_NL) >processes:
                     processes = processes
                 else:
                     processes = 1
+
                 # Remove routes do not match the IMO constrainst: if there is any EU port in the route,
                  # the trips connected to these EU ports have to have the same IMO
                 chunk_size = len(route_RU_int_NL)//processes
@@ -407,7 +382,11 @@ Returns:
         
         runtime_and_mem.loc[win_time_slide-1, 'Run Time'] = run_time
         # can DELETE late for this save
-        namecsv = f'./processing/pr_inter_output/Performance_noloop_nrRU_{len(start_RU_port)}_time4w_nrtotport_{tot_nr_port+1}.csv'
+        namecsv = f'./processing/pr_inter_output/all_Performance_loop_nrRU_{len(start_RU_port)}_time1w_nrtotport_{tot_nr_port+1}.csv'
+        # f'./processing/pr_inter_output/Performance_noloop_nrRU_{len(start_RU_port)}_time3w_nrtotport_{tot_nr_port+1}.csv'
+        # f'./processing/pr_inter_output/Performance_1imo_nrRU_{len(start_RU_port)}_timeinf_nrtotport_{tot_nr_port+1}.csv'
+        
+        # namecsv = 'performance_allRUport__timeinf_nrtotport5.csv'
         runtime_and_mem.to_csv(namecsv)
 
         # update time interval after each window slide iteration
@@ -427,7 +406,9 @@ Returns:
         # restart number of iteration after each window slide iteration
         n = start_iter
         m = tot_nr_port
-        
+
+    if len(routes_comb_w_multi_win_sld) == 0:
+        raise ValueError(' No routes were found')
     # combine all results from different time window slide
     if len(routes_comb_w_multi_win_sld) >1:
         for lst in range(len(routes_comb_w_multi_win_sld)):
@@ -444,6 +425,7 @@ Returns:
 
     # save the final output
     joblib.dump(final_route_RU_to_NL, outputpath)
-    namecsv = f'./processing/pr_inter_output/Performance_noloop_nrRU_{len(start_RU_port)}_time4w_nrtotport_{tot_nr_port+1}.csv'
+    namecsv = f'./processing/pr_inter_output/all_Performance_loop_nrRU_{len(start_RU_port)}_time1w_nrtotport_{tot_nr_port+1}.csv'
+    # namecsv = 'performance_allRUport__timeinf_nrtotport5.csv'
     runtime_and_mem.to_csv(namecsv)
     return final_route_RU_to_NL
